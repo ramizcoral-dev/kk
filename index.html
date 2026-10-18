@@ -8,6 +8,9 @@
 <meta name="apple-mobile-web-app-title" content="KK Okuyucu">
 <meta name="theme-color" content="#101413">
 <title>KK Okuyucu</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-180.png">
 <style>
 /* Depo sevk aracı: Sevkler (hazırlanan/okutulan/gönderilen) → Liste (bayi, ürün, hedef) → Tara (kamera) */
 :root{
@@ -241,7 +244,11 @@ button:disabled{opacity:.45}
 <input type="file" id="restoreIn" accept=".json,application/json" hidden>
 <div id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.4/dist/iife/reader/index.js"></script>
+<script src="zxing-reader.js"></script>
+<script>
+  // okuma motoru (wasm) bu sitenin kendi klasöründen yüklenir; böylece çevrimdışı önbelleğe alınabilir
+  try{ ZXingWASM.prepareZXingModule({overrides:{locateFile:function(p,prefix){ return p.slice(-5)===".wasm" ? "zxing_reader.wasm" : prefix+p; }}}); }catch(e){}
+</script>
 <script>
 (function(){
   var KEY="kk-okuyucu-v3", V2KEY="kk-okuyucu-v2", V1KEY="kk-okuyucu-liste";
@@ -341,7 +348,11 @@ button:disabled{opacity:.45}
     var n=document.createElement("p"); n.className="note";
     n.textContent=(D.lastBackup?"Son yedek: "+dmy(D.lastBackup)+". ":"Henüz yedek alınmadı. ")+"Yedek al → Dosyalar'a Kaydet → Drive → KK Okuyucu Yedek klasörü.";
     box.appendChild(n);
+    var o=document.createElement("p"); o.className="note"; o.id="offNote"; o.textContent=offText(); box.appendChild(o);
   }
+  var offReady=false;
+  function offText(){ return (offReady ? "✓ İnternetsiz kullanıma hazır." : "İnternetsiz kullanım hazırlanıyor… (ilk açılışta internet gerekir)") + (navigator.onLine===false ? " · Şu an internet yok." : ""); }
+  function updOff(){ var e=$("offNote"); if(e) e.textContent=offText(); }
   function renderSevkler(){
     var box=$("svList"); box.innerHTML="";
     if(!D.sevkler.length){
@@ -598,6 +609,7 @@ button:disabled{opacity:.45}
   function markSent(s){ s.status="gonderildi"; s.sentAt=Date.now(); save(); render(); toast("Gönderildi olarak işaretlendi"); }
   function shareSevk(s){
     var txt=textOut(s); remember("bayi",s.bayi);
+    if(navigator.onLine===false) toast("İnternet yok: WhatsApp mesajı bağlantı gelince gider");
     if(navigator.share){
       navigator.share({text:txt}).then(function(){ markSent(s); })
         .catch(function(e){ if(e && e.name!=="AbortError"){ markSent(s); location.href="https://wa.me/?text="+encodeURIComponent(txt); } });
@@ -698,6 +710,14 @@ button:disabled{opacity:.45}
   setTimeout(function(){ try{ lib()&&lib().readBarcodes(new ImageData(8,8),{formats:["QRCode"]}).catch(function(){}); }catch(e){} },300);
 
   load(); save(); render();
+  if("serviceWorker" in navigator){
+    navigator.serviceWorker.register("sw.js").then(function(){ return navigator.serviceWorker.ready; })
+      .then(function(){ return caches.keys(); })
+      .then(function(ks){ return Promise.all(ks.map(function(k){ return caches.open(k).then(function(c){ return c.match("zxing_reader.wasm",{ignoreSearch:true}); }); })); })
+      .then(function(r){ offReady=r.some(Boolean); updOff(); if(!offReady) setTimeout(function(){ caches.keys().then(function(ks){ offReady=ks.length>0; updOff(); }); },4000); })
+      .catch(function(){});
+  }
+  window.addEventListener("online",updOff); window.addEventListener("offline",updOff);
 })();
 </script>
 </body>
