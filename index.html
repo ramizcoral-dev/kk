@@ -36,9 +36,13 @@ h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.01em}
 .count b{color:var(--fg);font-size:17px}
 #camWrap{position:relative;margin:0 16px;border-radius:14px;overflow:hidden;background:#000;
   aspect-ratio:4/3;max-height:38vh;max-width:100%}
-#reader{width:100%;height:100%}
-#reader video{width:100%!important;height:100%!important;object-fit:cover}
-#reader img,#reader__dashboard,#reader__header_message{display:none!important}
+#reader{width:100%;height:100%;overflow:hidden}
+#video{width:100%;height:100%;object-fit:cover;transform-origin:center;display:block}
+#aim{position:absolute;left:50%;top:50%;width:var(--aim,62%);aspect-ratio:1;max-height:86%;transform:translate(-50%,-50%);
+  border:2px solid rgba(255,255,255,.85);border-radius:10px;box-shadow:0 0 0 999px rgba(0,0,0,.28);pointer-events:none}
+#zoom{position:absolute;right:8px;bottom:8px;display:flex;gap:6px}
+#zoom button{padding:6px 10px;font-size:13px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35)}
+#zoom button.on{background:#fff;color:#000}
 #camIdle{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#cfd8d4;text-align:center;padding:16px}
 #camIdle p{margin:0;font-size:13px;max-width:30ch}
 #flash{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s}
@@ -86,7 +90,13 @@ button:disabled{opacity:.45}
 </header>
 
 <div id="camWrap">
-  <div id="reader"></div>
+  <div id="reader"><video id="video" playsinline muted autoplay></video></div>
+  <div id="aim" hidden></div>
+  <div id="zoom" hidden>
+    <button type="button" data-z="1" class="on">1x</button>
+    <button type="button" data-z="2">2x</button>
+    <button type="button" data-z="3">3x</button>
+  </div>
   <div id="camIdle">
     <button class="primary" id="startBtn" style="flex:none;padding:12px 22px">Kamerayı Aç</button>
     <p>Barkod, QR ve Data Matrix okur. Aynı kod ikinci kez okunursa kırmızı uyarı ve sesli ikaz verir.</p>
@@ -123,7 +133,7 @@ button:disabled{opacity:.45}
 </div>
 <div id="toast"></div>
 
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.4/dist/iife/reader/index.js"></script>
 <script>
 (function(){
   var KEY = "kk-okuyucu-liste";
@@ -241,20 +251,88 @@ button:disabled{opacity:.45}
   }
   function openWa(txt){ location.href="https://wa.me/?text="+encodeURIComponent(txt); }
 
+  // ---- Tarama motoru: yüksek çözünürlüklü kamera + zxing-cpp (WebAssembly) ----
+  var FORMATS = ["DataMatrix","QRCode","EAN13","EAN8","Code128","Code39","UPCA","UPCE","ITF","Code93","Codabar"];
+  var stream=null, track=null, running=false, busy=false, zoom=1, hwZoom=false, timer=null;
+  var canvas=document.createElement("canvas"), ctx=canvas.getContext("2d",{willReadFrequently:true});
+  var video=$("video");
+
+  function lib(){ return window.ZXingWASM; }
+
+  function openCamera(){
+    return navigator.mediaDevices.getUserMedia({audio:false, video:{
+      facingMode:{ideal:"environment"}, width:{ideal:1920}, height:{ideal:1080}
+    }}).then(function(s){
+      stream=s; track=s.getVideoTracks()[0];
+      video.srcObject=s;
+      return video.play();
+    }).then(function(){
+      var caps = track.getCapabilities ? track.getCapabilities() : {};
+      var adv = [];
+      if(caps.focusMode && caps.focusMode.indexOf("continuous")>=0) adv.push({focusMode:"continuous"});
+      if(adv.length) track.applyConstraints({advanced:adv}).catch(function(){});
+      hwZoom = !!(caps.zoom && caps.zoom.max>=2);
+      $("zoom").hidden=false; $("aim").hidden=false;
+      setZoom(zoom);
+    });
+  }
+
+  function setZoom(z){
+    zoom=z;
+    [].forEach.call($("zoom").querySelectorAll("button"),function(b){ b.className = (+b.dataset.z===z)?"on":""; });
+    if(hwZoom){
+      var caps=track.getCapabilities();
+      track.applyConstraints({advanced:[{zoom:Math.min(z,caps.zoom.max)}]}).catch(function(){});
+      video.style.transform="";
+    }else{
+      // donanım zoom'u yoksa görüntüyü büyüt, okumayı da merkezden kırp
+      video.style.transform = z>1 ? "scale("+z+")" : "";
+    }
+  }
+
+  function scanFrame(){
+    if(!running) return;
+    if(busy || !video.videoWidth || !lib()){ timer=setTimeout(scanFrame,120); return; }
+    busy=true;
+    var vw=video.videoWidth, vh=video.videoHeight;
+    var side=Math.min(vw,vh) * 0.75 / (hwZoom?1:zoom);
+    var sx=(vw-side)/2, sy=(vh-side)/2;
+    var out=Math.min(1000, Math.round(side));
+    canvas.width=out; canvas.height=out;
+    ctx.drawImage(video, sx, sy, side, side, 0, 0, out, out);
+    var img=ctx.getImageData(0,0,out,out);
+    lib().readBarcodes(img, {formats:FORMATS, tryHarder:true, tryRotate:true, tryInvert:true, textMode:"Plain", maxNumberOfSymbols:1})
+      .then(function(res){
+        for(var i=0;i<res.length;i++){ if(res[i].isValid && res[i].text){ add(res[i].text,false); break; } }
+      })
+      .catch(function(){})
+      .then(function(){ busy=false; timer=setTimeout(scanFrame,80); });
+  }
+
   function start(){
     // ses iOS'ta ancak dokunuşla açılır; ilk dokunuşta hazırla
     try{ audio = audio || new (window.AudioContext||window.webkitAudioContext)(); audio.resume && audio.resume(); }catch(e){}
-    if(typeof Html5Qrcode==="undefined"){ setStatus("dup","Tarayıcı kütüphanesi yüklenemedi","İnternet bağlantısını kontrol edip sayfayı yenileyin."); return; }
-    var F = Html5QrcodeSupportedFormats;
-    scanner = new Html5Qrcode("reader", {verbose:false, formatsToSupport:[
-      F.DATA_MATRIX,F.QR_CODE,F.EAN_13,F.EAN_8,F.CODE_128,F.CODE_39,F.UPC_A,F.UPC_E,F.ITF,F.CODE_93,F.CODABAR
-    ], experimentalFeatures:{useBarCodeDetectorIfSupported:true}});
-    scanner.start({facingMode:"environment"},
-      {fps:12, qrbox:function(w,h){ var m=Math.min(w,h); return {width:Math.floor(m*0.8),height:Math.floor(m*0.8)}; }},
-      function(text){ add(text,false); }, function(){})
-    .then(function(){ $("camIdle").hidden=true; setStatus("","Okumaya hazır","Etiketi çerçeveye getirin."); })
-    .catch(function(err){ setStatus("dup","Kamera açılamadı", "Safari'de kamera izni verin ve sayfanın https:// ile açıldığından emin olun. ("+err+")"); });
+    if(!lib()){ setStatus("dup","Okuyucu yüklenemedi","İnternet bağlantısını kontrol edip sayfayı yenileyin."); return; }
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ setStatus("dup","Kamera desteklenmiyor","Sayfayı Safari'de ve https:// adresiyle açın."); return; }
+    setStatus("","Kamera açılıyor…","");
+    openCamera().then(function(){
+      $("camIdle").hidden=true; scanner=true; running=true;
+      setStatus("","Okumaya hazır","Kodu kare çerçevenin içine getirin. Küçük etikette 2x deneyin.");
+      scanFrame();
+    }).catch(function(err){
+      setStatus("dup","Kamera açılamadı","Safari ayarlarından bu siteye kamera izni verin. ("+(err&&err.name||err)+")");
+    });
   }
+
+  function stopCamera(){
+    running=false; clearTimeout(timer);
+    if(stream){ stream.getTracks().forEach(function(t){t.stop()}); stream=null; }
+  }
+
+  $("zoom").onclick=function(e){ var b=e.target.closest("button"); if(b) setZoom(+b.dataset.z); };
+
+  // kütüphaneyi önceden ısıt (wasm dosyası ilk kullanımda iner)
+  setTimeout(function(){ try{ lib() && lib().readBarcodes(new ImageData(8,8),{formats:["QRCode"]}).catch(function(){}); }catch(e){} }, 300);
 
   var pending=null;
   function ask(text, fn){ $("confirmText").textContent=text; pending=fn; $("confirm").hidden=false; }
@@ -276,7 +354,8 @@ button:disabled{opacity:.45}
   $("manualForm").onsubmit=function(e){ e.preventDefault(); var v=$("manualIn").value; $("manualIn").value=""; add(v,true); };
   document.addEventListener("visibilitychange",function(){
     if(!scanner) return;
-    try{ if(document.hidden) scanner.pause(true); else scanner.resume(); }catch(e){}
+    if(document.hidden){ stopCamera(); }
+    else{ openCamera().then(function(){ running=true; scanFrame(); }).catch(function(){ $("camIdle").hidden=false; }); }
   });
 
   load(); render();
