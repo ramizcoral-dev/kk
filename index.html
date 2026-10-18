@@ -165,7 +165,7 @@ button:disabled{opacity:.45}
         <datalist id="bayiList"></datalist>
       </div>
       <div id="groups"></div>
-      <button type="button" id="addGrpBtn">+ Ürün ekle</button>
+      <div class="row"><button type="button" id="addGrpBtn" style="flex:1">+ Ürün ekle</button><button type="button" id="codesBtn" style="flex:1">Sadece kodları kopyala</button></div>
       <div>
         <p class="lbl">WhatsApp'a gidecek metin</p>
         <pre class="preview" id="preview"></pre>
@@ -194,7 +194,8 @@ button:disabled{opacity:.45}
 <div class="sheet" id="nameSheet" hidden>
   <form class="box" id="nameForm" autocomplete="off">
     <p id="nameTitle">Ürün adı</p>
-    <input id="nameIn" list="urunList" placeholder="Örn. Kalsiyum Nitrat" enterkeyhint="done">
+    <input id="nameIn" list="urunList" placeholder="Örn. Kalsiyum Nitrat" enterkeyhint="next">
+    <input id="targetIn" type="number" inputmode="numeric" min="0" placeholder="Hedef adet (isteğe bağlı), örn. 50" enterkeyhint="done">
     <datalist id="urunList"></datalist>
     <button class="primary" type="submit">Kaydet</button>
     <button type="button" id="nameNo">Vazgeç</button>
@@ -224,6 +225,9 @@ button:disabled{opacity:.45}
     if(m && c.length>=10 && c.length<=20) return m[1];
     return null;
   }
+  function cnt(g){ return g.target ? g.codes.length+"/"+g.target : String(g.codes.length); }
+  function newGroup(){ askName("Yeni ürün","",0,function(v,t){ S.groups.push({name:v,codes:[],target:t}); S.active=S.groups.length-1; remember("urun",v); save(); render();
+    setStatus("",(v||"Ürün")+" seçildi"+(t?" · hedef "+t+" "+S.unit:""),"Kodları okutmaya başlayın."); }); }
   function total(){ return S.groups.reduce(function(a,g){return a+g.codes.length},0); }
 
   function load(){
@@ -268,12 +272,12 @@ button:disabled{opacity:.45}
     var ch=$("chips"); ch.innerHTML="";
     S.groups.forEach(function(g,i){
       var b=document.createElement("button"); b.type="button"; b.className="chip"+(i===S.active?" on":"");
-      b.textContent=g.name||"Ürün adı yok"; var n=document.createElement("b"); n.textContent=g.codes.length; b.appendChild(n);
+      b.textContent=g.name||"Ürün adı yok"; var n=document.createElement("b"); n.textContent=cnt(g); b.appendChild(n);
       b.onclick=function(){ S.active=i; save(); render(); };
       ch.appendChild(b);
     });
     var add=document.createElement("button"); add.type="button"; add.className="chip add"; add.textContent="+ Ürün";
-    add.onclick=function(){ askName("Yeni ürün adı","",function(v){ S.groups.push({name:v,codes:[]}); S.active=S.groups.length-1; remember("urun",v); save(); render(); }); };
+    add.onclick=newGroup;
     ch.appendChild(add);
     var on=ch.children[S.active]; if(on && on.scrollIntoView) on.scrollIntoView({inline:"nearest",block:"nearest"});
 
@@ -290,9 +294,9 @@ button:disabled{opacity:.45}
       var box=document.createElement("div"); box.className="grp"+(gi===S.active?" on":"");
       var h=document.createElement("div"); h.className="gh";
       var nm=document.createElement("span"); nm.className="nm"; nm.textContent=g.name||"Ürün adı yok";
-      var ct=document.createElement("span"); ct.className="ct"; ct.textContent=g.codes.length+" "+S.unit;
-      var ed=document.createElement("button"); ed.type="button"; ed.textContent="Adı";
-      ed.onclick=function(){ askName("Ürün adını değiştir",g.name,function(v){ g.name=v; remember("urun",v); save(); render(); }); };
+      var ct=document.createElement("span"); ct.className="ct"; ct.textContent=cnt(g)+" "+S.unit;
+      var ed=document.createElement("button"); ed.type="button"; ed.textContent="Düzenle";
+      ed.onclick=function(){ askName("Ürün adı ve hedef",g.name,g.target,function(v,t){ g.name=v; g.target=t; remember("urun",v); save(); render(); }); };
       var sel=document.createElement("button"); sel.type="button"; sel.textContent="Seç";
       sel.onclick=function(){ S.active=gi; save(); render(); showTab("scan"); };
       var del=document.createElement("button"); del.type="button"; del.textContent="Sil"; del.className="danger";
@@ -330,7 +334,7 @@ button:disabled{opacity:.45}
     var li=document.createElement("li"); if(hitCode && c.code===hitCode) li.className="hit";
     var n=document.createElement("span"); n.className="n"; n.textContent=(ci+1)+".";
     var v=document.createElement("span"); v.className="v"; v.textContent=c.code;
-    var s=document.createElement("small"); s.textContent=hhmm(c.time)+(c.dup?" · mükerrer":"")+(c.odd?" · farklı seri":""); if(c.odd) s.className="w"; v.appendChild(s);
+    var s=document.createElement("small"); s.textContent=hhmm(c.time)+(c.dup?" · mükerrer":"")+(c.odd?" · farklı seri":"")+(c.over?" · hedef fazlası":""); if(c.odd||c.over) s.className="w"; v.appendChild(s);
     var x=document.createElement("button"); x.type="button"; x.className="x"; x.setAttribute("aria-label","Sil"); x.textContent="×";
     x.onclick=function(){ ask((ci+1)+". kod silinsin mi?\n"+c.code,function(){ S.groups[gi].codes.splice(ci,1); save(); render(); },"Sil"); };
     li.appendChild(n); li.appendChild(v); li.appendChild(x); return li;
@@ -341,7 +345,7 @@ button:disabled{opacity:.45}
     if(!$("optSound").checked) return;
     try{
       audio=audio||new (window.AudioContext||window.webkitAudioContext)();
-      var tones=kind==="dup"?[[220,.18],[0,.06],[220,.18],[0,.06],[220,.25]]:kind==="warn"?[[900,.12],[0,.05],[600,.18]]:[[1400,.09]];
+      var tones=kind==="dup"?[[220,.18],[0,.06],[220,.18],[0,.06],[220,.25]]:kind==="warn"?[[900,.12],[0,.05],[600,.18]]:kind==="done"?[[1000,.1],[0,.03],[1300,.1],[0,.03],[1700,.22]]:[[1400,.09]];
       var t=audio.currentTime;
       tones.forEach(function(tn){
         if(tn[0]){ var o=audio.createOscillator(),g=audio.createGain();
@@ -380,13 +384,22 @@ button:disabled{opacity:.45}
       var k=seriesKey(code), ref=null;
       for(var i=0;i<g.codes.length && !ref;i++){ var rk=seriesKey(g.codes[i].code); if(rk && !g.codes[i].odd) ref=rk; }
       var odd = !!(k && ref && k!==ref);
-      g.codes.push(odd?{code:code,time:now,odd:true}:{code:code,time:now});
-      if(odd){
+      var over = !!(g.target && g.codes.length>=g.target);
+      var rec={code:code,time:now}; if(odd) rec.odd=true; if(over) rec.over=true;
+      g.codes.push(rec);
+      var nm=(g.name||"Ürün");
+      if(over){
+        beep("warn"); flash("warn");
+        setStatus("warn","Hedef aşıldı! "+nm+": "+g.codes.length+"/"+g.target+" "+S.unit+(odd?" · farklı seri":""), code);
+      }else if(g.target && g.codes.length===g.target && !odd){
+        beep("done"); flash("ok");
+        setStatus("ok","Tamamlandı: "+nm+" "+g.codes.length+"/"+g.target+" "+S.unit, code);
+      }else if(odd){
         beep("warn"); flash("warn");
         setStatus("warn","Farklı seri! Bu üründeki kodlar "+ref+"… ile başlıyor. Başka ürün olabilir, kontrol edin.", code);
       }else{
         beep("ok"); flash("ok");
-        setStatus("ok",(g.name||"Ürün")+": "+g.codes.length+". kod eklendi", code);
+        setStatus("ok",nm+": "+(g.target? g.codes.length+"/"+g.target+" "+S.unit : g.codes.length+". kod eklendi"), code);
       }
       save(); render();
     }
@@ -470,8 +483,8 @@ button:disabled{opacity:.45}
   $("confirmYes").onclick=function(){ $("confirm").hidden=true; var f=pending; pending=null; if(f) f(); };
   $("confirmNo").onclick=function(){ $("confirm").hidden=true; pending=null; };
   var nameCb=null;
-  function askName(title,val,cb){ $("nameTitle").textContent=title; $("nameIn").value=val||""; nameCb=cb; $("nameSheet").hidden=false; setTimeout(function(){$("nameIn").focus()},50); }
-  $("nameForm").onsubmit=function(e){ e.preventDefault(); var v=$("nameIn").value.trim(); $("nameSheet").hidden=true; if(nameCb) nameCb(v); nameCb=null; };
+  function askName(title,val,target,cb){ $("nameTitle").textContent=title; $("nameIn").value=val||""; $("targetIn").value=target||""; nameCb=cb; $("nameSheet").hidden=false; setTimeout(function(){$("nameIn").focus()},50); }
+  $("nameForm").onsubmit=function(e){ e.preventDefault(); var v=$("nameIn").value.trim(), t=parseInt($("targetIn").value,10); $("nameSheet").hidden=true; if(nameCb) nameCb(v, t>0?t:0); nameCb=null; };
   $("nameNo").onclick=function(){ $("nameSheet").hidden=true; nameCb=null; };
 
   $("tabScan").onclick=function(){ showTab("scan"); };
@@ -481,7 +494,8 @@ button:disabled{opacity:.45}
   $("bayi").oninput=function(){ S.bayi=this.value; save(); $("preview").textContent=textOut()||"(boş)"; };
   $("bayi").onchange=function(){ remember("bayi",this.value); save(); render(); };
   $("unit").onchange=function(){ S.unit=this.value; save(); render(); };
-  $("addGrpBtn").onclick=function(){ askName("Yeni ürün adı","",function(v){ S.groups.push({name:v,codes:[]}); S.active=S.groups.length-1; remember("urun",v); save(); render(); }); };
+  $("addGrpBtn").onclick=newGroup;
+  $("codesBtn").onclick=function(){ var all=[]; S.groups.forEach(function(g){ g.codes.forEach(function(c){ all.push(c.code); }); }); copyText(all.join("\n")); };
   $("shareBtn").onclick=function(){ remember("bayi",S.bayi); save(); shareText(textOut()); };
   $("copyBtn").onclick=function(){ copyText(textOut()); };
   $("newBtn").onclick=function(){
