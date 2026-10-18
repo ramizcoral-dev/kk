@@ -6,39 +6,50 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="KK Okuyucu">
-<meta name="theme-color" content="#14171a">
+<meta name="theme-color" content="#101413">
 <title>KK Okuyucu</title>
 <style>
-/* Tek ekran depo aracı: üstte kamera, ortada durum bandı, altta liste ve gönder çubuğu */
+/* Depo sevk aracı: Tara sekmesi (kamera + aktif ürün) ve Liste sekmesi (bayi, ürün grupları, geçmiş) */
 :root{
-  --bg:#f3f5f4; --panel:#ffffff; --fg:#16201c; --muted:#5d6b65; --line:#d9e0dd;
+  --bg:#f3f5f4; --panel:#ffffff; --fg:#16201c; --muted:#5d6b65; --line:#d9e0dd; --chip:#e6ece9;
   --accent:#1f7a55; --accent-fg:#ffffff;
-  --ok:#1f7a55; --ok-bg:#dff1e8; --dup:#b3261e; --dup-bg:#fbe3e1;
+  --ok:#1f7a55; --ok-bg:#dff1e8; --dup:#b3261e; --dup-bg:#fbe3e1; --warn:#8a5a00; --warn-bg:#fdf0d3;
   --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
 }
 @media (prefers-color-scheme:dark){:root{
-  --bg:#101413; --panel:#1a201e; --fg:#e6ece9; --muted:#93a39c; --line:#2b3431;
+  --bg:#101413; --panel:#1a201e; --fg:#e6ece9; --muted:#93a39c; --line:#2b3431; --chip:#242c29;
   --accent:#3fb37f; --accent-fg:#06140d;
-  --ok:#5fd39c; --ok-bg:#163327; --dup:#ff8a80; --dup-bg:#3d1714; color-scheme:dark;
+  --ok:#5fd39c; --ok-bg:#163327; --dup:#ff8a80; --dup-bg:#3d1714; --warn:#f2c46b; --warn-bg:#3a2c10; color-scheme:dark;
 }}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 var(--font);
-  display:flex;flex-direction:column;
-  padding-top:env(safe-area-inset-top,0px);
-  -webkit-tap-highlight-color:transparent}
-header{display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:10px max(16px,env(safe-area-inset-left,0px)) 10px max(16px,env(safe-area-inset-right,0px))}
-h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.01em}
-.count{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px}
-.count b{color:var(--fg);font-size:17px}
-#camWrap{position:relative;margin:0 16px;border-radius:14px;overflow:hidden;background:#000;
-  aspect-ratio:4/3;max-height:38vh;max-width:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 var(--font);display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top,0px);-webkit-tap-highlight-color:transparent}
+.gut{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:8px}
+h1{font-size:17px;margin:0;font-weight:700}
+.tabs{display:flex;background:var(--chip);border-radius:10px;padding:3px}
+.tabs button{border:0;background:none;padding:6px 14px;font-size:14px;border-radius:8px;color:var(--muted)}
+.tabs button.on{background:var(--panel);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+main{flex:1;min-height:0;display:flex;flex-direction:column}
+.view{flex:1;min-height:0;display:flex;flex-direction:column}
+input,select{font:15px var(--font);padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg);min-width:0}
+.row{display:flex;gap:8px;align-items:center}
+.lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px}
+
+/* Tara */
+.chips{display:flex;gap:6px;overflow-x:auto;padding-block:8px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 12px;font-size:14px;white-space:nowrap;color:var(--fg)}
+.chip b{font-variant-numeric:tabular-nums;margin-left:4px}
+.chip.on{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+.chip.add{color:var(--accent);border-style:dashed}
+#camWrap{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:4/3;max-height:36vh;max-width:100%;margin-inline:auto;width:100%}
 #reader{width:100%;height:100%;overflow:hidden}
 #video{width:100%;height:100%;object-fit:cover;transform-origin:center;display:block}
-#aim{position:absolute;left:50%;top:50%;width:var(--aim,62%);aspect-ratio:1;max-height:86%;transform:translate(-50%,-50%);
+#aim{position:absolute;left:50%;top:50%;width:62%;aspect-ratio:1;max-height:86%;transform:translate(-50%,-50%);
   border:2px solid rgba(255,255,255,.85);border-radius:10px;box-shadow:0 0 0 999px rgba(0,0,0,.28);pointer-events:none}
 #zoom{position:absolute;right:8px;bottom:8px;display:flex;gap:6px}
 #zoom button{padding:6px 10px;font-size:13px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35)}
@@ -48,315 +59,447 @@ h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.01em}
 #flash{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s}
 #flash.ok{background:rgba(63,179,127,.45);opacity:1;transition:none}
 #flash.dup{background:rgba(220,40,30,.55);opacity:1;transition:none}
-#status{margin:10px 16px 0;border-radius:12px;padding:10px 12px;min-height:58px;
-  background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:center}
+#status{margin-top:8px;border-radius:12px;padding:8px 12px;min-height:54px;background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:center}
 #status .t{font-weight:700;font-size:15px}
-#status .c{font-family:var(--mono);font-size:12.5px;color:var(--muted);word-break:break-all;margin-top:2px}
+#status .c{font-family:var(--mono);font-size:12px;color:var(--muted);word-break:break-all;margin-top:2px}
 #status.ok{background:var(--ok-bg);border-color:transparent}
 #status.ok .t{color:var(--ok)}
 #status.dup{background:var(--dup-bg);border-color:var(--dup)}
 #status.dup .t{color:var(--dup);font-size:17px}
-.opts{display:flex;flex-wrap:wrap;gap:8px 16px;margin:8px 16px 0;font-size:13px;color:var(--muted)}
+#status.warn{background:var(--warn-bg);border-color:var(--warn)}
+#status.warn .t{color:var(--warn)}
+#flash.warn{background:rgba(240,170,30,.5);opacity:1;transition:none}
+.v small.w{color:var(--warn)}
+.opts{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:6px;font-size:13px;color:var(--muted)}
 .opts label{display:flex;align-items:center;gap:6px}
-.manual{display:flex;gap:8px;margin:8px 16px 0}
-.manual input{flex:1;min-width:0;font:14px var(--mono);padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
-#list{flex:1;overflow-y:auto;margin:10px 0 0;padding:0 16px;list-style:none}
-#list li{display:grid;grid-template-columns:2.2em 1fr auto;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
-#list .n{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px;text-align:right}
-#list .v{font-family:var(--mono);font-size:13px;word-break:break-all;min-width:0}
-#list .v small{display:block;font-family:var(--font);color:var(--muted);font-size:11.5px}
-#list li.hit{animation:hit 1.6s}
+.manual{margin-top:6px}
+.manual input{flex:1;font-family:var(--mono);font-size:14px}
+.recent{flex:1;min-height:0;overflow-y:auto;margin-top:8px;padding-bottom:8px}
+
+/* Liste */
+.scroll{flex:1;min-height:0;overflow-y:auto;padding-block:8px 16px;display:flex;flex-direction:column;gap:14px}
+.grp{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.grp.on{border-color:var(--accent)}
+.gh{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.gh .nm{flex:1;min-width:0;font-weight:700;word-break:break-word}
+.gh .ct{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px;white-space:nowrap}
+.gh button{border:0;background:none;color:var(--muted);font-size:13px;padding:4px 6px}
+ol.codes{list-style:none;margin:0;padding:0 12px}
+ol.codes li{display:grid;grid-template-columns:2.2em 1fr auto;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)}
+ol.codes li:last-child{border-bottom:0}
+.n{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px;text-align:right}
+.v{font-family:var(--mono);font-size:13px;word-break:break-all;min-width:0}
+.v small{display:block;font-family:var(--font);color:var(--muted);font-size:11.5px}
+li.hit{animation:hit 1.6s}
 @keyframes hit{0%{background:var(--dup-bg)}100%{background:transparent}}
-#list .x{border:0;background:none;color:var(--muted);font-size:20px;line-height:1;padding:4px 8px;cursor:pointer}
-.empty{color:var(--muted);text-align:center;padding:24px 0;font-size:14px}
-footer{display:flex;gap:8px;padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
-  background:var(--panel);border-top:1px solid var(--line)}
+.x{border:0;background:none;color:var(--muted);font-size:20px;line-height:1;padding:4px 8px}
+.empty{color:var(--muted);text-align:center;padding:14px 0;font-size:14px}
+.preview{font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-all;background:var(--chip);border-radius:10px;padding:10px;max-height:160px;overflow:auto;margin:0}
+.hist{display:flex;flex-direction:column;gap:6px}
+.hist button{text-align:left;display:flex;justify-content:space-between;gap:8px;font-weight:500}
+.hist small{color:var(--muted);white-space:nowrap}
+
+footer{display:flex;gap:8px;padding-block:10px calc(10px + env(safe-area-inset-bottom,0px));background:var(--panel);border-top:1px solid var(--line)}
 button{font:600 15px var(--font);border-radius:12px;padding:12px 14px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
-button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 button.primary{background:var(--accent);color:var(--accent-fg);border-color:transparent;flex:1}
 button.danger{color:var(--dup)}
 button:disabled{opacity:.45}
-#confirm{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:20}
-#confirm .box{background:var(--panel);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px}
-#confirm p{margin:0 0 6px;font-size:15px}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet .box{background:var(--panel);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px}
+.sheet p{margin:0 0 4px;font-size:15px;white-space:pre-wrap;word-break:break-word}
 #toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:20px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30}
 #toast.on{opacity:1}
 </style>
 </head>
 <body>
-<header>
+<header class="gut">
   <h1>KK Okuyucu</h1>
-  <div class="count"><b id="cnt">0</b> kod · <span id="dupCnt">0</span> mükerrer</div>
+  <div class="tabs" role="tablist">
+    <button id="tabScan" class="on" type="button">Tara</button>
+    <button id="tabList" type="button">Liste <span id="tabCnt">0</span></button>
+  </div>
 </header>
 
-<div id="camWrap">
-  <div id="reader"><video id="video" playsinline muted autoplay></video></div>
-  <div id="aim" hidden></div>
-  <div id="zoom" hidden>
-    <button type="button" data-z="1" class="on">1x</button>
-    <button type="button" data-z="2">2x</button>
-    <button type="button" data-z="3">3x</button>
-  </div>
-  <div id="camIdle">
-    <button class="primary" id="startBtn" style="flex:none;padding:12px 22px">Kamerayı Aç</button>
-    <p>Barkod, QR ve Data Matrix okur. Aynı kod ikinci kez okunursa kırmızı uyarı ve sesli ikaz verir.</p>
-  </div>
-  <div id="flash"></div>
-</div>
+<main>
+  <!-- TARA -->
+  <section class="view gut" id="vScan">
+    <div class="chips" id="chips"></div>
+    <div id="camWrap">
+      <div id="reader"><video id="video" playsinline muted autoplay></video></div>
+      <div id="aim" hidden></div>
+      <div id="zoom" hidden>
+        <button type="button" data-z="1" class="on">1x</button>
+        <button type="button" data-z="2">2x</button>
+        <button type="button" data-z="3">3x</button>
+      </div>
+      <div id="camIdle">
+        <button class="primary" id="startBtn" type="button" style="flex:none;padding:12px 22px">Kamerayı Aç</button>
+        <p>Okunan kod seçili ürünün altına eklenir. Aynı kod ikinci kez okunursa kırmızı uyarı verir.</p>
+      </div>
+      <div id="flash"></div>
+    </div>
+    <div id="status"><div class="t">Hazır</div><div class="c">Önce ürünü seçin, sonra kamerayı açın.</div></div>
+    <div class="opts">
+      <label><input type="checkbox" id="optSkip" checked> Mükerreri ekleme</label>
+      <label><input type="checkbox" id="optSound" checked> Ses</label>
+    </div>
+    <form class="manual row" id="manualForm" autocomplete="off">
+      <input id="manualIn" placeholder="Okunmayan kodu elle yazın" enterkeyhint="done">
+      <button type="submit">Ekle</button>
+    </form>
+    <div class="recent"><ol class="codes" id="recent"></ol></div>
+  </section>
 
-<div id="status"><div class="t">Hazır</div><div class="c">Kamerayı açıp etiketi çerçeveye getirin.</div></div>
+  <!-- LİSTE -->
+  <section class="view gut" id="vList" hidden>
+    <div class="scroll">
+      <div>
+        <p class="lbl">Bayi</p>
+        <div class="row">
+          <input id="bayi" list="bayiList" placeholder="Bayi adı" style="flex:1" autocomplete="off">
+          <select id="unit" aria-label="Birim">
+            <option>çvl</option><option>koli</option><option>kutu</option><option>palet</option><option>adet</option>
+          </select>
+        </div>
+        <datalist id="bayiList"></datalist>
+      </div>
+      <div id="groups"></div>
+      <button type="button" id="addGrpBtn">+ Ürün ekle</button>
+      <div>
+        <p class="lbl">WhatsApp'a gidecek metin</p>
+        <pre class="preview" id="preview"></pre>
+      </div>
+      <div>
+        <p class="lbl">Son sevkler</p>
+        <div class="hist" id="hist"></div>
+      </div>
+    </div>
+  </section>
+</main>
 
-<div class="opts">
-  <label><input type="checkbox" id="optSkip" checked> Mükerreri listeye ekleme</label>
-  <label><input type="checkbox" id="optSound" checked> Ses</label>
-</div>
-
-<form class="manual" id="manualForm" autocomplete="off">
-  <input id="manualIn" placeholder="Okunmayan kodu elle yazın" enterkeyhint="done">
-  <button type="submit">Ekle</button>
-</form>
-
-<ul id="list"></ul>
-
-<footer>
-  <button class="danger" id="clearBtn">Temizle</button>
-  <button id="copyBtn">Kopyala</button>
-  <button class="primary" id="shareBtn">WhatsApp'a Gönder</button>
+<footer class="gut">
+  <button class="danger" id="newBtn" type="button">Yeni sevk</button>
+  <button id="copyBtn" type="button">Kopyala</button>
+  <button class="primary" id="shareBtn" type="button">WhatsApp'a Gönder</button>
 </footer>
 
-<div id="confirm" hidden>
+<div class="sheet" id="confirm" hidden>
   <div class="box">
-    <p id="confirmText">Liste silinsin mi?</p>
-    <button class="primary" id="confirmYes" style="background:var(--dup)">Evet, sil</button>
-    <button id="confirmNo">Vazgeç</button>
+    <p id="confirmText"></p>
+    <button class="primary" id="confirmYes" type="button" style="background:var(--dup)">Evet</button>
+    <button id="confirmNo" type="button">Vazgeç</button>
   </div>
+</div>
+<div class="sheet" id="nameSheet" hidden>
+  <form class="box" id="nameForm" autocomplete="off">
+    <p id="nameTitle">Ürün adı</p>
+    <input id="nameIn" list="urunList" placeholder="Örn. Kalsiyum Nitrat" enterkeyhint="done">
+    <datalist id="urunList"></datalist>
+    <button class="primary" type="submit">Kaydet</button>
+    <button type="button" id="nameNo">Vazgeç</button>
+  </form>
 </div>
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.4/dist/iife/reader/index.js"></script>
 <script>
 (function(){
-  var KEY = "kk-okuyucu-liste";
-  var items = [];           // {code, time}
-  var dupCount = 0;
-  var last = {code:null, at:0};
-  var scanner = null, audio = null;
-  var $ = function(id){return document.getElementById(id)};
+  var KEY="kk-okuyucu-v2", OLDKEY="kk-okuyucu-liste";
+  var S={bayi:"", unit:"çvl", groups:[], active:0, dup:0};
+  var hist=[], names={bayi:[], urun:[]};
+  var last={code:null,at:0}, audio=null, scanner=null, hitCode=null;
+  var $=function(id){return document.getElementById(id)};
 
-  // GS1 Data Matrix'teki görünmez ayraçları (FNC1/GS) ve boşlukları temizle
+  // GS1 Data Matrix'teki görünmez ayraçları (FNC1/GS) temizle
   function clean(s){ return String(s).replace(/[\x00-\x1f\x7f]/g,"").trim(); }
+  function hhmm(t){ var d=new Date(t); return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)+":"+("0"+d.getSeconds()).slice(-2); }
+  function dmy(t){ var d=new Date(t); return ("0"+d.getDate()).slice(-2)+"."+("0"+(d.getMonth()+1)).slice(-2)+" "+("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2); }
+  // Kodun "seri" kısmı: BKST kutu kodunda GTIN, GTS kodunda sondaki 6 haneli sıra no'dan önceki kısım.
+  // BKST koli/palet (00 ile başlayan 20 haneli SSCC) kodlarında ürün bilgisi olmadığı için kontrol yapılmaz.
+  function seriesKey(c){
+    if(/^00\d{18}$/.test(c)) return null;
+    if(/^01\d{14}/.test(c)) return "01"+c.substr(2,14);
+    var m=/^([A-Z0-9]*[A-Z][A-Z0-9]*?)(\d{6})$/.exec(c);
+    if(m && c.length>=10 && c.length<=20) return m[1];
+    return null;
+  }
+  function total(){ return S.groups.reduce(function(a,g){return a+g.codes.length},0); }
 
   function load(){
-    try{ var d = JSON.parse(localStorage.getItem(KEY)||"{}"); items = d.items||[]; dupCount = d.dup||0; }catch(e){}
+    try{
+      var d=JSON.parse(localStorage.getItem(KEY)||"null");
+      if(d){ S=d.S||S; hist=d.hist||[]; names=d.names||names; }
+      else{
+        var o=JSON.parse(localStorage.getItem(OLDKEY)||"null");
+        if(o && o.items && o.items.length) S.groups=[{name:"",codes:o.items}];
+      }
+    }catch(e){}
+    if(!S.groups.length) S.groups=[{name:"",codes:[]}];
+    if(S.active>=S.groups.length) S.active=0;
   }
-  function save(){
-    try{ localStorage.setItem(KEY, JSON.stringify({items:items, dup:dupCount})); }catch(e){}
-  }
-  function hhmm(t){ var d=new Date(t); return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)+":"+("0"+d.getSeconds()).slice(-2); }
-
-  function render(hitIndex){
-    var ul = $("list"); ul.innerHTML = "";
-    if(!items.length){ ul.innerHTML = '<li class="empty" style="display:block;border:0">Henüz kod okunmadı.</li>'; }
-    for(var i=items.length-1;i>=0;i--){
-      var li = document.createElement("li");
-      if(i===hitIndex) li.className="hit";
-      var n=document.createElement("span"); n.className="n"; n.textContent=(i+1)+".";
-      var v=document.createElement("span"); v.className="v"; v.textContent=items[i].code;
-      var s=document.createElement("small"); s.textContent=hhmm(items[i].time)+(items[i].dup?" · mükerrer":""); v.appendChild(s);
-      var x=document.createElement("button"); x.className="x"; x.setAttribute("aria-label","Sil"); x.textContent="×";
-      x.dataset.i=i;
-      li.appendChild(n); li.appendChild(v); li.appendChild(x); ul.appendChild(li);
-    }
-    $("cnt").textContent = items.length;
-    $("dupCnt").textContent = dupCount;
-    $("shareBtn").disabled = $("copyBtn").disabled = !items.length;
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify({S:S,hist:hist,names:names})); }catch(e){} }
+  function remember(kind,val){
+    val=(val||"").trim(); if(!val) return;
+    var a=names[kind].filter(function(x){return x.toLocaleUpperCase("tr")!==val.toLocaleUpperCase("tr")});
+    a.unshift(val); names[kind]=a.slice(0,40);
   }
 
+  // ---------- Metin (WhatsApp) ----------
+  function textOut(st){
+    st=st||S;
+    var lines=[], used=st.groups.filter(function(g){return g.codes.length});
+    if(st.bayi) lines.push(st.bayi);
+    var plain = used.length===1 && !used[0].name && !st.bayi;
+    used.forEach(function(g){
+      if(!plain) lines.push((g.name||"Ürün")+"-"+g.codes.length+st.unit);
+      g.codes.forEach(function(c){ lines.push(c.code); });
+    });
+    return lines.join("\n");
+  }
+
+  // ---------- Çizim ----------
+  function render(){
+    var tot=total();
+    $("tabCnt").textContent=tot;
+    $("shareBtn").disabled=$("copyBtn").disabled=!tot;
+
+    // ürün çipleri
+    var ch=$("chips"); ch.innerHTML="";
+    S.groups.forEach(function(g,i){
+      var b=document.createElement("button"); b.type="button"; b.className="chip"+(i===S.active?" on":"");
+      b.textContent=g.name||"Ürün adı yok"; var n=document.createElement("b"); n.textContent=g.codes.length; b.appendChild(n);
+      b.onclick=function(){ S.active=i; save(); render(); };
+      ch.appendChild(b);
+    });
+    var add=document.createElement("button"); add.type="button"; add.className="chip add"; add.textContent="+ Ürün";
+    add.onclick=function(){ askName("Yeni ürün adı","",function(v){ S.groups.push({name:v,codes:[]}); S.active=S.groups.length-1; remember("urun",v); save(); render(); }); };
+    ch.appendChild(add);
+    var on=ch.children[S.active]; if(on && on.scrollIntoView) on.scrollIntoView({inline:"nearest",block:"nearest"});
+
+    // son okunanlar (aktif ürün)
+    var g=S.groups[S.active], r=$("recent"); r.innerHTML="";
+    if(!g.codes.length){ r.innerHTML='<li class="empty" style="display:block;border:0">Bu ürüne henüz kod okunmadı.</li>'; }
+    for(var i=g.codes.length-1;i>=0;i--) r.appendChild(codeRow(S.active,i));
+
+    // liste sekmesi
+    if(document.activeElement!==$("bayi")) $("bayi").value=S.bayi;
+    $("unit").value=S.unit;
+    var gs=$("groups"); gs.innerHTML="";
+    S.groups.forEach(function(g,gi){
+      var box=document.createElement("div"); box.className="grp"+(gi===S.active?" on":"");
+      var h=document.createElement("div"); h.className="gh";
+      var nm=document.createElement("span"); nm.className="nm"; nm.textContent=g.name||"Ürün adı yok";
+      var ct=document.createElement("span"); ct.className="ct"; ct.textContent=g.codes.length+" "+S.unit;
+      var ed=document.createElement("button"); ed.type="button"; ed.textContent="Adı";
+      ed.onclick=function(){ askName("Ürün adını değiştir",g.name,function(v){ g.name=v; remember("urun",v); save(); render(); }); };
+      var sel=document.createElement("button"); sel.type="button"; sel.textContent="Seç";
+      sel.onclick=function(){ S.active=gi; save(); render(); showTab("scan"); };
+      var del=document.createElement("button"); del.type="button"; del.textContent="Sil"; del.className="danger";
+      del.onclick=function(){ ask((g.name||"Bu ürün")+" ve "+g.codes.length+" kodu silinsin mi?",function(){
+        S.groups.splice(gi,1); if(!S.groups.length) S.groups=[{name:"",codes:[]}]; S.active=Math.min(S.active,S.groups.length-1); save(); render(); }); };
+      h.appendChild(nm); h.appendChild(ct); h.appendChild(ed); h.appendChild(sel); h.appendChild(del);
+      box.appendChild(h);
+      var ol=document.createElement("ol"); ol.className="codes";
+      if(!g.codes.length){ var e=document.createElement("li"); e.className="empty"; e.style.display="block"; e.style.border="0"; e.textContent="Kod yok"; ol.appendChild(e); }
+      g.codes.forEach(function(_,ci){ ol.appendChild(codeRow(gi,ci)); });
+      box.appendChild(ol); gs.appendChild(box);
+    });
+    $("preview").textContent=textOut()||"(boş)";
+
+    // geçmiş
+    var hs=$("hist"); hs.innerHTML="";
+    if(!hist.length){ hs.innerHTML='<div class="empty">"Yeni sevk" dediğinizde önceki liste buraya kaydedilir.</div>'; }
+    hist.forEach(function(h,hi){
+      var b=document.createElement("button"); b.type="button";
+      var cnt=h.S.groups.reduce(function(a,g){return a+g.codes.length},0);
+      var l=document.createElement("span"); l.textContent=(h.S.bayi||"Bayi adı yok")+" · "+cnt+" kod";
+      var t=document.createElement("small"); t.textContent=dmy(h.at);
+      b.appendChild(l); b.appendChild(t);
+      b.onclick=function(){ ask("Bu sevk tekrar gönderilsin mi?\n\n"+textOut(h.S).slice(0,400), function(){ shareText(textOut(h.S)); }, "Gönder"); };
+      hs.appendChild(b);
+    });
+
+    // bayi/ürün önerileri
+    $("bayiList").innerHTML=""; names.bayi.forEach(function(v){ var o=document.createElement("option"); o.value=v; $("bayiList").appendChild(o); });
+    $("urunList").innerHTML=""; names.urun.forEach(function(v){ var o=document.createElement("option"); o.value=v; $("urunList").appendChild(o); });
+  }
+
+  function codeRow(gi,ci){
+    var c=S.groups[gi].codes[ci];
+    var li=document.createElement("li"); if(hitCode && c.code===hitCode) li.className="hit";
+    var n=document.createElement("span"); n.className="n"; n.textContent=(ci+1)+".";
+    var v=document.createElement("span"); v.className="v"; v.textContent=c.code;
+    var s=document.createElement("small"); s.textContent=hhmm(c.time)+(c.dup?" · mükerrer":"")+(c.odd?" · farklı seri":""); if(c.odd) s.className="w"; v.appendChild(s);
+    var x=document.createElement("button"); x.type="button"; x.className="x"; x.setAttribute("aria-label","Sil"); x.textContent="×";
+    x.onclick=function(){ ask((ci+1)+". kod silinsin mi?\n"+c.code,function(){ S.groups[gi].codes.splice(ci,1); save(); render(); },"Sil"); };
+    li.appendChild(n); li.appendChild(v); li.appendChild(x); return li;
+  }
+
+  // ---------- Ses / görsel ----------
   function beep(kind){
     if(!$("optSound").checked) return;
     try{
-      audio = audio || new (window.AudioContext||window.webkitAudioContext)();
-      var tones = kind==="dup" ? [[220,.18],[0,.06],[220,.18],[0,.06],[220,.25]] : [[1400,.09]];
-      var t = audio.currentTime;
+      audio=audio||new (window.AudioContext||window.webkitAudioContext)();
+      var tones=kind==="dup"?[[220,.18],[0,.06],[220,.18],[0,.06],[220,.25]]:kind==="warn"?[[900,.12],[0,.05],[600,.18]]:[[1400,.09]];
+      var t=audio.currentTime;
       tones.forEach(function(tn){
-        if(tn[0]){
-          var o=audio.createOscillator(), g=audio.createGain();
-          o.type = kind==="dup" ? "square" : "sine"; o.frequency.value=tn[0];
+        if(tn[0]){ var o=audio.createOscillator(),g=audio.createGain();
+          o.type=kind==="dup"?"square":kind==="warn"?"triangle":"sine"; o.frequency.value=tn[0];
           g.gain.setValueAtTime(.25,t); g.gain.exponentialRampToValueAtTime(.001,t+tn[1]);
-          o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t+tn[1]);
-        }
-        t += tn[1];
+          o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t+tn[1]); }
+        t+=tn[1];
       });
     }catch(e){}
-    if(navigator.vibrate) try{ navigator.vibrate(kind==="dup"?[200,80,200]:40); }catch(e){}
+    if(navigator.vibrate) try{ navigator.vibrate(kind==="dup"?[200,80,200]:kind==="warn"?[120,60,120]:40); }catch(e){}
   }
-
-  function flash(kind){
-    var f=$("flash"); f.className=kind;
-    setTimeout(function(){ f.className=""; }, kind==="dup"?600:150);
-  }
-
-  function setStatus(kind, title, code){
-    var s=$("status"); s.className=kind||"";
-    s.innerHTML=""; var t=document.createElement("div"); t.className="t"; t.textContent=title;
+  function flash(kind){ var f=$("flash"); f.className=kind; setTimeout(function(){f.className=""},kind==="ok"?150:600); }
+  function setStatus(kind,title,code){
+    var s=$("status"); s.className=kind||""; s.innerHTML="";
+    var t=document.createElement("div"); t.className="t"; t.textContent=title;
     var c=document.createElement("div"); c.className="c"; c.textContent=code||"";
     s.appendChild(t); s.appendChild(c);
   }
 
-  function add(raw, manual){
-    var code = clean(raw); if(!code) return;
-    var now = Date.now();
-    // Kod çerçevede durmaya devam ederse aynı okumayı tekrar sayma
-    if(!manual && code===last.code && now-last.at<3000){ last.at=now; return; }
-    last = {code:code, at:now};
-
-    var idx = -1;
-    for(var i=0;i<items.length;i++){ if(items[i].code===code){ idx=i; break; } }
-
-    if(idx>=0){
-      dupCount++;
-      beep("dup"); flash("dup");
-      setStatus("dup","MÜKERRER! "+(idx+1)+". sıradaki kodla aynı ("+hhmm(items[idx].time)+")", code);
-      if(!$("optSkip").checked){ items.push({code:code,time:now,dup:true}); }
-      save(); render(idx);
+  // ---------- Kod ekleme ----------
+  function add(raw,manual){
+    var code=clean(raw); if(!code) return;
+    var now=Date.now();
+    if(!manual && code===last.code && now-last.at<3000){ last.at=now; return; } // çerçevede duran kodu tekrar sayma
+    last={code:code,at:now};
+    var fg=-1, fi=-1;
+    S.groups.forEach(function(g,gi){ g.codes.forEach(function(c,ci){ if(fg<0 && c.code===code){ fg=gi; fi=ci; } }); });
+    var g=S.groups[S.active];
+    if(fg>=0){
+      S.dup++; beep("dup"); flash("dup");
+      var where=(S.groups[fg].name||"Ürün")+" listesinde "+(fi+1)+". sırada ("+hhmm(S.groups[fg].codes[fi].time)+")";
+      setStatus("dup","MÜKERRER! "+where, code);
+      if(!$("optSkip").checked) g.codes.push({code:code,time:now,dup:true});
+      hitCode=code; save(); render(); hitCode=null;
     }else{
-      items.push({code:code,time:now});
-      beep("ok"); flash("ok");
-      setStatus("ok", items.length+". kod eklendi", code);
+      var k=seriesKey(code), ref=null;
+      for(var i=0;i<g.codes.length && !ref;i++){ var rk=seriesKey(g.codes[i].code); if(rk && !g.codes[i].odd) ref=rk; }
+      var odd = !!(k && ref && k!==ref);
+      g.codes.push(odd?{code:code,time:now,odd:true}:{code:code,time:now});
+      if(odd){
+        beep("warn"); flash("warn");
+        setStatus("warn","Farklı seri! Bu üründeki kodlar "+ref+"… ile başlıyor. Başka ürün olabilir, kontrol edin.", code);
+      }else{
+        beep("ok"); flash("ok");
+        setStatus("ok",(g.name||"Ürün")+": "+g.codes.length+". kod eklendi", code);
+      }
       save(); render();
     }
   }
 
-  function textOut(){ return items.map(function(x){return x.code}).join("\n"); }
-
-  function toast(msg){ var t=$("toast"); t.textContent=msg; t.className="on"; setTimeout(function(){t.className=""},1800); }
-
-  function copy(){
-    var txt=textOut();
+  // ---------- Paylaşım ----------
+  function toast(m){ var t=$("toast"); t.textContent=m; t.className="on"; setTimeout(function(){t.className=""},1800); }
+  function copyText(txt){
     if(navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(txt).then(function(){toast(items.length+" kod kopyalandı")},function(){fallbackCopy(txt)});
+      navigator.clipboard.writeText(txt).then(function(){toast("Kopyalandı")},function(){fallbackCopy(txt)});
     }else fallbackCopy(txt);
   }
   function fallbackCopy(txt){
     var ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta); ta.select();
-    try{ document.execCommand("copy"); toast(items.length+" kod kopyalandı"); }catch(e){ toast("Kopyalanamadı"); }
+    try{ document.execCommand("copy"); toast("Kopyalandı"); }catch(e){ toast("Kopyalanamadı"); }
     ta.remove();
   }
-
-  function share(){
-    var txt=textOut();
-    if(navigator.share){
-      navigator.share({text:txt}).catch(function(e){ if(e && e.name!=="AbortError") openWa(txt); });
-    }else openWa(txt);
+  function shareText(txt){
+    if(navigator.share){ navigator.share({text:txt}).catch(function(e){ if(e && e.name!=="AbortError") location.href="https://wa.me/?text="+encodeURIComponent(txt); }); }
+    else location.href="https://wa.me/?text="+encodeURIComponent(txt);
   }
-  function openWa(txt){ location.href="https://wa.me/?text="+encodeURIComponent(txt); }
 
-  // ---- Tarama motoru: yüksek çözünürlüklü kamera + zxing-cpp (WebAssembly) ----
-  var FORMATS = ["DataMatrix","QRCode","EAN13","EAN8","Code128","Code39","UPCA","UPCE","ITF","Code93","Codabar"];
+  // ---------- Tarama motoru: yüksek çözünürlüklü kamera + zxing-cpp (WebAssembly) ----------
+  var FORMATS=["DataMatrix","QRCode","EAN13","EAN8","Code128","Code39","UPCA","UPCE","ITF","Code93","Codabar"];
   var stream=null, track=null, running=false, busy=false, zoom=1, hwZoom=false, timer=null;
   var canvas=document.createElement("canvas"), ctx=canvas.getContext("2d",{willReadFrequently:true});
   var video=$("video");
-
   function lib(){ return window.ZXingWASM; }
 
   function openCamera(){
-    return navigator.mediaDevices.getUserMedia({audio:false, video:{
-      facingMode:{ideal:"environment"}, width:{ideal:1920}, height:{ideal:1080}
-    }}).then(function(s){
-      stream=s; track=s.getVideoTracks()[0];
-      video.srcObject=s;
-      return video.play();
-    }).then(function(){
-      var caps = track.getCapabilities ? track.getCapabilities() : {};
-      var adv = [];
-      if(caps.focusMode && caps.focusMode.indexOf("continuous")>=0) adv.push({focusMode:"continuous"});
-      if(adv.length) track.applyConstraints({advanced:adv}).catch(function(){});
-      hwZoom = !!(caps.zoom && caps.zoom.max>=2);
-      $("zoom").hidden=false; $("aim").hidden=false;
-      setZoom(zoom);
+    return navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}}})
+    .then(function(s){ stream=s; track=s.getVideoTracks()[0]; video.srcObject=s; return video.play(); })
+    .then(function(){
+      var caps=track.getCapabilities?track.getCapabilities():{};
+      if(caps.focusMode && caps.focusMode.indexOf("continuous")>=0) track.applyConstraints({advanced:[{focusMode:"continuous"}]}).catch(function(){});
+      hwZoom=!!(caps.zoom && caps.zoom.max>=2);
+      $("zoom").hidden=false; $("aim").hidden=false; setZoom(zoom);
     });
   }
-
   function setZoom(z){
     zoom=z;
-    [].forEach.call($("zoom").querySelectorAll("button"),function(b){ b.className = (+b.dataset.z===z)?"on":""; });
-    if(hwZoom){
-      var caps=track.getCapabilities();
-      track.applyConstraints({advanced:[{zoom:Math.min(z,caps.zoom.max)}]}).catch(function(){});
-      video.style.transform="";
-    }else{
-      // donanım zoom'u yoksa görüntüyü büyüt, okumayı da merkezden kırp
-      video.style.transform = z>1 ? "scale("+z+")" : "";
-    }
+    [].forEach.call($("zoom").querySelectorAll("button"),function(b){ b.className=(+b.dataset.z===z)?"on":""; });
+    if(hwZoom){ var caps=track.getCapabilities(); track.applyConstraints({advanced:[{zoom:Math.min(z,caps.zoom.max)}]}).catch(function(){}); video.style.transform=""; }
+    else video.style.transform=z>1?"scale("+z+")":"";
   }
-
   function scanFrame(){
     if(!running) return;
-    if(busy || !video.videoWidth || !lib()){ timer=setTimeout(scanFrame,120); return; }
+    if(busy || !video.videoWidth || !lib() || !$("vList").hidden){ timer=setTimeout(scanFrame,150); return; }
     busy=true;
     var vw=video.videoWidth, vh=video.videoHeight;
-    var side=Math.min(vw,vh) * 0.75 / (hwZoom?1:zoom);
-    var sx=(vw-side)/2, sy=(vh-side)/2;
-    var out=Math.min(1000, Math.round(side));
+    var side=Math.min(vw,vh)*0.75/(hwZoom?1:zoom);
+    var out=Math.min(1000,Math.round(side));
     canvas.width=out; canvas.height=out;
-    ctx.drawImage(video, sx, sy, side, side, 0, 0, out, out);
-    var img=ctx.getImageData(0,0,out,out);
-    lib().readBarcodes(img, {formats:FORMATS, tryHarder:true, tryRotate:true, tryInvert:true, textMode:"Plain", maxNumberOfSymbols:1})
-      .then(function(res){
-        for(var i=0;i<res.length;i++){ if(res[i].isValid && res[i].text){ add(res[i].text,false); break; } }
-      })
+    ctx.drawImage(video,(vw-side)/2,(vh-side)/2,side,side,0,0,out,out);
+    lib().readBarcodes(ctx.getImageData(0,0,out,out),{formats:FORMATS,tryHarder:true,tryRotate:true,tryInvert:true,textMode:"Plain",maxNumberOfSymbols:1})
+      .then(function(res){ for(var i=0;i<res.length;i++){ if(res[i].isValid && res[i].text){ add(res[i].text,false); break; } } })
       .catch(function(){})
       .then(function(){ busy=false; timer=setTimeout(scanFrame,80); });
   }
-
   function start(){
-    // ses iOS'ta ancak dokunuşla açılır; ilk dokunuşta hazırla
-    try{ audio = audio || new (window.AudioContext||window.webkitAudioContext)(); audio.resume && audio.resume(); }catch(e){}
+    try{ audio=audio||new (window.AudioContext||window.webkitAudioContext)(); audio.resume&&audio.resume(); }catch(e){}
     if(!lib()){ setStatus("dup","Okuyucu yüklenemedi","İnternet bağlantısını kontrol edip sayfayı yenileyin."); return; }
-    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ setStatus("dup","Kamera desteklenmiyor","Sayfayı Safari'de ve https:// adresiyle açın."); return; }
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ setStatus("dup","Kamera desteklenmiyor","Sayfayı Safari'de ve https:// adresiyle açın."); return; }
     setStatus("","Kamera açılıyor…","");
     openCamera().then(function(){
       $("camIdle").hidden=true; scanner=true; running=true;
       setStatus("","Okumaya hazır","Kodu kare çerçevenin içine getirin. Küçük etikette 2x deneyin.");
       scanFrame();
-    }).catch(function(err){
-      setStatus("dup","Kamera açılamadı","Safari ayarlarından bu siteye kamera izni verin. ("+(err&&err.name||err)+")");
-    });
+    }).catch(function(err){ setStatus("dup","Kamera açılamadı","Safari ayarlarından bu siteye kamera izni verin. ("+(err&&err.name||err)+")"); });
   }
+  function stopCamera(){ running=false; clearTimeout(timer); if(stream){ stream.getTracks().forEach(function(t){t.stop()}); stream=null; } }
 
-  function stopCamera(){
-    running=false; clearTimeout(timer);
-    if(stream){ stream.getTracks().forEach(function(t){t.stop()}); stream=null; }
+  // ---------- Sayfalar / pencereler ----------
+  function showTab(t){
+    $("vScan").hidden=t!=="scan"; $("vList").hidden=t!=="list";
+    $("tabScan").className=t==="scan"?"on":""; $("tabList").className=t==="list"?"on":"";
+    if(t==="scan" && stream) video.play().catch(function(){});
   }
-
-  $("zoom").onclick=function(e){ var b=e.target.closest("button"); if(b) setZoom(+b.dataset.z); };
-
-  // kütüphaneyi önceden ısıt (wasm dosyası ilk kullanımda iner)
-  setTimeout(function(){ try{ lib() && lib().readBarcodes(new ImageData(8,8),{formats:["QRCode"]}).catch(function(){}); }catch(e){} }, 300);
-
   var pending=null;
-  function ask(text, fn){ $("confirmText").textContent=text; pending=fn; $("confirm").hidden=false; }
-  $("confirmYes").onclick=function(){ $("confirm").hidden=true; if(pending) pending(); pending=null; };
+  function ask(text,fn,yes){ $("confirmText").textContent=text; $("confirmYes").textContent=yes||"Evet"; pending=fn; $("confirm").hidden=false; }
+  $("confirmYes").onclick=function(){ $("confirm").hidden=true; var f=pending; pending=null; if(f) f(); };
   $("confirmNo").onclick=function(){ $("confirm").hidden=true; pending=null; };
+  var nameCb=null;
+  function askName(title,val,cb){ $("nameTitle").textContent=title; $("nameIn").value=val||""; nameCb=cb; $("nameSheet").hidden=false; setTimeout(function(){$("nameIn").focus()},50); }
+  $("nameForm").onsubmit=function(e){ e.preventDefault(); var v=$("nameIn").value.trim(); $("nameSheet").hidden=true; if(nameCb) nameCb(v); nameCb=null; };
+  $("nameNo").onclick=function(){ $("nameSheet").hidden=true; nameCb=null; };
 
+  $("tabScan").onclick=function(){ showTab("scan"); };
+  $("tabList").onclick=function(){ showTab("list"); };
   $("startBtn").onclick=start;
-  $("shareBtn").onclick=share;
-  $("copyBtn").onclick=copy;
-  $("clearBtn").onclick=function(){
-    if(!items.length) return;
-    ask(items.length+" kodluk liste silinsin mi?", function(){ items=[]; dupCount=0; last={code:null,at:0}; save(); render(); setStatus("","Liste temizlendi",""); });
-  };
-  $("list").onclick=function(e){
-    var b=e.target.closest(".x"); if(!b) return;
-    var i=+b.dataset.i;
-    ask((i+1)+". kod silinsin mi?\n"+items[i].code, function(){ items.splice(i,1); save(); render(); });
+  $("zoom").onclick=function(e){ var b=e.target.closest("button"); if(b) setZoom(+b.dataset.z); };
+  $("bayi").oninput=function(){ S.bayi=this.value; save(); $("preview").textContent=textOut()||"(boş)"; };
+  $("bayi").onchange=function(){ remember("bayi",this.value); save(); render(); };
+  $("unit").onchange=function(){ S.unit=this.value; save(); render(); };
+  $("addGrpBtn").onclick=function(){ askName("Yeni ürün adı","",function(v){ S.groups.push({name:v,codes:[]}); S.active=S.groups.length-1; remember("urun",v); save(); render(); }); };
+  $("shareBtn").onclick=function(){ remember("bayi",S.bayi); save(); shareText(textOut()); };
+  $("copyBtn").onclick=function(){ copyText(textOut()); };
+  $("newBtn").onclick=function(){
+    var tot=total();
+    ask(tot ? "Yeni sevke başlansın mı?\nMevcut liste ("+tot+" kod) \"Son sevkler\"e kaydedilir." : "Yeni sevke başlansın mı?", function(){
+      if(tot){ hist.unshift({at:Date.now(),S:JSON.parse(JSON.stringify(S))}); hist=hist.slice(0,20); }
+      S={bayi:"",unit:S.unit,groups:[{name:"",codes:[]}],active:0,dup:0}; last={code:null,at:0};
+      save(); render(); setStatus("","Yeni sevk","Bayi adını Liste sekmesinden, ürünü yukarıdan seçin.");
+    }, "Yeni sevk");
   };
   $("manualForm").onsubmit=function(e){ e.preventDefault(); var v=$("manualIn").value; $("manualIn").value=""; add(v,true); };
   document.addEventListener("visibilitychange",function(){
     if(!scanner) return;
-    if(document.hidden){ stopCamera(); }
-    else{ openCamera().then(function(){ running=true; scanFrame(); }).catch(function(){ $("camIdle").hidden=false; }); }
+    if(document.hidden) stopCamera();
+    else openCamera().then(function(){ running=true; scanFrame(); }).catch(function(){ $("camIdle").hidden=false; });
   });
+  // okuyucu dosyasını önceden indir
+  setTimeout(function(){ try{ lib()&&lib().readBarcodes(new ImageData(8,8),{formats:["QRCode"]}).catch(function(){}); }catch(e){} },300);
 
   load(); render();
 })();
