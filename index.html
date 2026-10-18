@@ -114,6 +114,13 @@ ol.codes li:last-child{border-bottom:0}
 li.hit{animation:hit 1.6s}
 @keyframes hit{0%{background:var(--dup-bg)}100%{background:transparent}}
 .x{border:0;background:none;color:var(--muted);font-size:20px;line-height:1;padding:4px 8px}
+.rowbtns{display:flex;gap:2px}
+.mv{border:0;background:none;color:var(--muted);font-size:13px;padding:4px 6px}
+.undo{margin-top:6px;width:100%;padding:9px 12px;font-size:14px}
+.backup{display:flex;gap:8px;margin-top:8px}
+.backup button{flex:1;padding:10px;font-size:14px}
+.note{font-size:12px;color:var(--muted);margin:4px 0 0}
+#moveList{display:flex;flex-direction:column;gap:8px}
 .empty{color:var(--muted);text-align:center;padding:14px 0;font-size:14px}
 .preview{font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-all;background:var(--chip);border-radius:10px;padding:10px;max-height:160px;overflow:auto;margin:0}
 
@@ -152,12 +159,7 @@ button:disabled{opacity:.45}
     <div class="scroll">
       <div>
         <p class="lbl">Bayi</p>
-        <div class="row">
-          <input id="bayi" list="bayiList" placeholder="Bayi adı" style="flex:1" autocomplete="off">
-          <select id="unit" aria-label="Birim">
-            <option>çvl</option><option>koli</option><option>kutu</option><option>palet</option><option>adet</option>
-          </select>
-        </div>
+        <input id="bayi" list="bayiList" placeholder="Bayi adı" style="width:100%" autocomplete="off">
         <datalist id="bayiList"></datalist>
       </div>
       <div id="groups"></div>
@@ -188,9 +190,10 @@ button:disabled{opacity:.45}
       <div id="flash"></div>
     </div>
     <div id="status"><div class="t">Hazır</div><div class="c">Ürünü seçin, kamerayı açın.</div></div>
+    <button type="button" class="undo" id="undoBtn" hidden>↶ Son okunanı geri al</button>
     <div class="opts">
-      <label><input type="checkbox" id="optSkip" checked> Mükerreri ekleme</label>
       <label><input type="checkbox" id="optSound" checked> Ses</label>
+      <label><input type="checkbox" id="optNext" checked> Hedef dolunca sıradaki ürüne geç</label>
     </div>
     <form class="manual row" id="manualForm" autocomplete="off">
       <input id="manualIn" placeholder="Okunmayan kodu elle yazın" enterkeyhint="done">
@@ -219,12 +222,23 @@ button:disabled{opacity:.45}
   <form class="box" id="nameForm" autocomplete="off">
     <p id="nameTitle">Ürün</p>
     <input id="nameIn" list="urunList" placeholder="Ürün adı, örn. Kalsiyum Nitrat" enterkeyhint="next">
-    <input id="targetIn" type="number" inputmode="numeric" min="0" placeholder="Hedef adet (isteğe bağlı), örn. 50" enterkeyhint="done">
+    <div class="row">
+      <input id="targetIn" type="number" inputmode="numeric" min="0" placeholder="Hedef adet (isteğe bağlı)" enterkeyhint="done" style="flex:1">
+      <select id="unitIn" aria-label="Birim"><option>çvl</option><option>koli</option><option>kutu</option><option>palet</option><option>adet</option></select>
+    </div>
     <datalist id="urunList"></datalist>
     <button class="primary" type="submit">Kaydet</button>
     <button type="button" id="nameNo">Vazgeç</button>
   </form>
 </div>
+<div class="sheet" id="moveSheet" hidden>
+  <div class="box">
+    <p id="moveTitle">Hangi ürüne taşınsın?</p>
+    <div id="moveList"></div>
+    <button type="button" id="moveNo">Vazgeç</button>
+  </div>
+</div>
+<input type="file" id="restoreIn" accept=".json,application/json" hidden>
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.4/dist/iife/reader/index.js"></script>
@@ -245,6 +259,7 @@ button:disabled{opacity:.45}
   function cur(){ for(var i=0;i<D.sevkler.length;i++) if(D.sevkler[i].id===D.cur) return D.sevkler[i]; return null; }
   function total(s){ return s.groups.reduce(function(a,g){return a+g.codes.length},0); }
   function cnt(g){ return g.target ? g.codes.length+"/"+g.target : String(g.codes.length); }
+  function un(s,g){ return g.unit || s.unit || "çvl"; }
   function newSevk(){ return {id:uid(), bayi:"", unit:D.unit||"çvl", groups:[], active:0, status:"hazir", created:Date.now(), updated:Date.now(), sentAt:null}; }
 
   // Kodun "seri" kısmı: BKST kutu kodunda GTIN, GTS kodunda sondaki 6 haneden önceki kısım. SSCC koli/palet kontrol edilmez.
@@ -289,7 +304,7 @@ button:disabled{opacity:.45}
     if(s.bayi) lines.push(s.bayi);
     var plain=used.length===1 && !used[0].name && !s.bayi;
     used.forEach(function(g){
-      if(!plain) lines.push((g.name||"Ürün")+"-"+g.codes.length+s.unit);
+      if(!plain) lines.push((g.name||"Ürün")+"-"+g.codes.length+un(s,g));
       g.codes.forEach(function(c){ lines.push(c.code); });
     });
     return lines.join("\n");
@@ -317,11 +332,21 @@ button:disabled{opacity:.45}
     $("urunList").innerHTML=""; D.names.urun.forEach(function(v){ var o=document.createElement("option"); o.value=v; $("urunList").appendChild(o); });
   }
 
+  function backupBox(box){
+    var h=document.createElement("p"); h.className="sec"; h.textContent="Yedek"; box.appendChild(h);
+    var b=document.createElement("div"); b.className="backup";
+    var ex=document.createElement("button"); ex.type="button"; ex.textContent="Yedek al"; ex.onclick=exportBackup;
+    var im=document.createElement("button"); im.type="button"; im.textContent="Yedekten yükle"; im.onclick=function(){ $("restoreIn").value=""; $("restoreIn").click(); };
+    b.appendChild(ex); b.appendChild(im); box.appendChild(b);
+    var n=document.createElement("p"); n.className="note";
+    n.textContent=(D.lastBackup?"Son yedek: "+dmy(D.lastBackup)+". ":"Henüz yedek alınmadı. ")+"Yedek al → Dosyalar'a Kaydet → Drive → KK Okuyucu Yedek klasörü.";
+    box.appendChild(n);
+  }
   function renderSevkler(){
     var box=$("svList"); box.innerHTML="";
     if(!D.sevkler.length){
       box.innerHTML='<div class="empty">Henüz sevk yok.<br>"+ Yeni sevk hazırla" ile bayi, ürün ve hedefleri girin; depoda bu listeden açıp okutun.</div>';
-      return;
+      backupBox(box); return;
     }
     var order=["okutuluyor","hazir","gonderildi"], titles={okutuluyor:"Okutuluyor",hazir:"Hazırlananlar",gonderildi:"Gönderilenler (1 hafta saklanır)"};
     order.forEach(function(st){
@@ -333,6 +358,7 @@ button:disabled{opacity:.45}
       list.forEach(function(s){ wrap.appendChild(sevkCard(s)); });
       box.appendChild(wrap);
     });
+    backupBox(box);
   }
 
   function sevkCard(s){
@@ -362,22 +388,23 @@ button:disabled{opacity:.45}
 
   function renderList(s){
     if(document.activeElement!==$("bayi")) $("bayi").value=s.bayi;
-    $("unit").value=s.unit;
     var gs=$("groups"); gs.innerHTML="";
     if(!s.groups.length){ gs.innerHTML='<div class="empty">Ürün eklemek için "+ Ürün ekle"ye dokunun.</div>'; }
     s.groups.forEach(function(g,gi){
       var box=document.createElement("div"); box.className="grp"+(gi===s.active?" on":"");
       var h=document.createElement("div"); h.className="gh";
       var nm=document.createElement("span"); nm.className="nm"; nm.textContent=g.name||"Ürün adı yok";
-      var ct=document.createElement("span"); ct.className="ct"; ct.textContent=cnt(g)+" "+s.unit;
+      var ct=document.createElement("span"); ct.className="ct"; ct.textContent=cnt(g)+" "+un(s,g);
       var ed=document.createElement("button"); ed.type="button"; ed.textContent="Düzenle";
-      ed.onclick=function(){ askName("Ürün adı ve hedef",g.name,g.target,function(v,t){ g.name=v; g.target=t; remember("urun",v); save(); render(); }); };
+      ed.onclick=function(){ askName("Ürün düzenle",g.name,g.target,un(s,g),function(v,t,u){ g.name=v; g.target=t; g.unit=u; remember("urun",v); save(); render(); }); };
       var sel=document.createElement("button"); sel.type="button"; sel.textContent="Okut";
       sel.onclick=function(){ s.active=gi; save(); showTab("scan"); };
       var del=document.createElement("button"); del.type="button"; del.textContent="Sil";
       del.onclick=function(){ ask((g.name||"Bu ürün")+(g.codes.length?" ve "+g.codes.length+" kodu":"")+" silinsin mi?",function(){
         s.groups.splice(gi,1); s.active=Math.max(0,Math.min(s.active,s.groups.length-1)); save(); render(); },"Sil"); };
-      h.appendChild(nm); h.appendChild(ct); h.appendChild(ed); h.appendChild(sel); h.appendChild(del);
+      var mva=document.createElement("button"); mva.type="button"; mva.textContent="Taşı"; mva.hidden=!g.codes.length || s.groups.length<2;
+      mva.onclick=function(){ askMove(s,gi,null); };
+      h.appendChild(nm); h.appendChild(ct); h.appendChild(ed); h.appendChild(sel); h.appendChild(mva); h.appendChild(del);
       box.appendChild(h);
       if(g.codes.length){
         var ol=document.createElement("ol"); ol.className="codes";
@@ -402,6 +429,7 @@ button:disabled{opacity:.45}
     var add=document.createElement("button"); add.type="button"; add.className="chip add"; add.textContent="+ Ürün";
     add.onclick=newGroup; ch.appendChild(add);
     var on=ch.children[s.active]; if(on && on.scrollIntoView) on.scrollIntoView({inline:"nearest",block:"nearest"});
+    $("undoBtn").hidden=!(lastAdd && lastAdd.sid===s.id);
     var r=$("recent"); r.innerHTML="";
     var g=s.groups[s.active];
     if(!g){ r.innerHTML='<li class="empty" style="display:block;border:0">Önce "+ Ürün" ile ürün ekleyin.</li>'; return; }
@@ -418,7 +446,10 @@ button:disabled{opacity:.45}
     if(c.odd||c.over) sm.className="w"; v.appendChild(sm);
     var x=document.createElement("button"); x.type="button"; x.className="x"; x.setAttribute("aria-label","Sil"); x.textContent="×";
     x.onclick=function(){ ask((ci+1)+". kod silinsin mi?\n"+c.code,function(){ s.groups[gi].codes.splice(ci,1); save(); render(); },"Sil"); };
-    li.appendChild(n); li.appendChild(v); li.appendChild(x); return li;
+    var bt=document.createElement("span"); bt.className="rowbtns";
+    if(s.groups.length>1){ var mv=document.createElement("button"); mv.type="button"; mv.className="mv"; mv.textContent="Taşı"; mv.onclick=function(){ askMove(s,gi,ci); }; bt.appendChild(mv); }
+    bt.appendChild(x);
+    li.appendChild(n); li.appendChild(v); li.appendChild(bt); return li;
   }
 
   // ---------- Ses / görsel ----------
@@ -463,7 +494,6 @@ button:disabled{opacity:.45}
       var where = hit.sv===s ? (hit.g.name||"Ürün")+" listesinde "+(hit.ci+1)+". sırada ("+hhmm(hit.c.time)+")"
                              : "Başka sevkte var: "+(hit.sv.bayi||"Bayi adı yok")+" · "+(hit.g.name||"Ürün")+" ("+STATUS[hit.sv.status]+")";
       setStatus("dup","MÜKERRER! "+where, code);
-      if(!$("optSkip").checked){ g.codes.push({code:code,time:now,dup:true}); markStarted(s); }
       hitCode=code; save(); render(); hitCode=null;
       return;
     }
@@ -472,14 +502,86 @@ button:disabled{opacity:.45}
     for(var i=0;i<g.codes.length && !ref;i++){ var rk=seriesKey(g.codes[i].code); if(rk && !g.codes[i].odd) ref=rk; }
     var odd=!!(k && ref && k!==ref), over=!!(g.target && g.codes.length>=g.target);
     var rec={code:code,time:now}; if(odd) rec.odd=true; if(over) rec.over=true;
-    g.codes.push(rec); markStarted(s);
+    g.codes.push(rec); markStarted(s); lastAdd={sid:s.id, code:code};
     var nm=g.name||"Ürün";
-    if(over){ beep("warn"); flash("warn"); setStatus("warn","Hedef aşıldı! "+nm+": "+g.codes.length+"/"+g.target+" "+s.unit+(odd?" · farklı seri":""), code); }
-    else if(g.target && g.codes.length===g.target && !odd){ beep("done"); flash("ok"); setStatus("ok","Tamamlandı: "+nm+" "+g.codes.length+"/"+g.target+" "+s.unit, code); }
+    if(over){ beep("warn"); flash("warn"); setStatus("warn","Hedef aşıldı! "+nm+": "+g.codes.length+"/"+g.target+" "+un(s,g)+(odd?" · farklı seri":""), code); }
+    else if(g.target && g.codes.length===g.target && !odd){
+      beep("done"); flash("ok");
+      var nx=nextOpen(s), msg="Tamamlandı: "+nm+" "+g.codes.length+"/"+g.target+" "+un(s,g);
+      if(nx>=0 && $("optNext").checked){ s.active=nx; msg+=" → Sıradaki: "+(s.groups[nx].name||"Ürün"); last={code:null,at:0}; }
+      else if(nx<0 && s.groups.every(function(x){return x.target && x.codes.length>=x.target})) msg+=" · Tüm ürünler tamam, gönderebilirsiniz.";
+      setStatus("ok", msg, code);
+    }
     else if(odd){ beep("warn"); flash("warn"); setStatus("warn","Farklı seri! Bu üründeki kodlar "+ref+"… ile başlıyor. Başka ürün olabilir, kontrol edin.", code); }
-    else{ beep("ok"); flash("ok"); setStatus("ok",nm+": "+(g.target? g.codes.length+"/"+g.target+" "+s.unit : g.codes.length+". kod eklendi"), code); }
+    else{ beep("ok"); flash("ok"); setStatus("ok",nm+": "+(g.target? g.codes.length+"/"+g.target+" "+un(s,g) : g.codes.length+". kod eklendi"), code); }
     save(); render();
   }
+  var lastAdd=null;
+  // hedefi dolmamış bir sonraki ürün (önce sonrakiler, sonra baştakiler)
+  function nextOpen(s){
+    for(var k=1;k<s.groups.length;k++){ var i=(s.active+k)%s.groups.length, g=s.groups[i]; if(!g.target || g.codes.length<g.target) return i; }
+    return -1;
+  }
+  function undoLast(){
+    var s=cur(); if(!s || !lastAdd || lastAdd.sid!==s.id) return;
+    for(var gi=0;gi<s.groups.length;gi++){ var cs=s.groups[gi].codes;
+      for(var ci=cs.length-1;ci>=0;ci--){ if(cs[ci].code===lastAdd.code){ cs.splice(ci,1); s.active=gi;
+        setStatus("","Geri alındı",lastAdd.code); toast("Son kod silindi"); lastAdd=null; last={code:null,at:0}; save(); render(); return; } } }
+    lastAdd=null; render();
+  }
+  function askMove(s,gi,ci){
+    var src=s.groups[gi], n=ci===null?src.codes.length:1;
+    $("moveTitle").textContent=(ci===null? (src.name||"Ürün")+" ürünündeki "+n+" kod" : src.codes[ci].code)+"\nhangi ürüne taşınsın?";
+    var ml=$("moveList"); ml.innerHTML="";
+    s.groups.forEach(function(g,ti){
+      if(ti===gi) return;
+      var b=document.createElement("button"); b.type="button"; b.textContent=(g.name||"Ürün adı yok")+" ("+cnt(g)+" "+un(s,g)+")";
+      b.onclick=function(){
+        var moved = ci===null ? src.codes.splice(0) : src.codes.splice(ci,1);
+        moved.forEach(function(c){ delete c.odd; delete c.over; });
+        g.codes=g.codes.concat(moved);
+        $("moveSheet").hidden=true; toast(moved.length+" kod taşındı"); save(); render();
+      };
+      ml.appendChild(b);
+    });
+    $("moveSheet").hidden=false;
+  }
+  $("moveNo").onclick=function(){ $("moveSheet").hidden=true; };
+
+  // ---------- Yedek ----------
+  function stamp(){ var d=new Date(); return d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+"-"+p2(d.getHours())+p2(d.getMinutes()); }
+  function exportBackup(){
+    var data=JSON.stringify({app:"kk-okuyucu",version:3,at:Date.now(),data:D});
+    var name="KK-Okuyucu-yedek-"+stamp()+".json";
+    var file; try{ file=new File([data],name,{type:"application/json"}); }catch(e){}
+    var done=function(){ D.lastBackup=Date.now(); save(); render(); toast("Yedek hazırlandı"); };
+    if(file && navigator.canShare && navigator.canShare({files:[file]})){
+      navigator.share({files:[file],title:name}).then(done).catch(function(e){ if(e && e.name!=="AbortError") toast("Yedek paylaşılamadı"); });
+    }else{
+      var a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([data],{type:"application/json"})); a.download=name;
+      document.body.appendChild(a); a.click(); a.remove(); done();
+    }
+  }
+  $("restoreIn").onchange=function(){
+    var f=this.files&&this.files[0]; if(!f) return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      try{
+        var o=JSON.parse(rd.result), b=o && o.app==="kk-okuyucu" ? o.data : null;
+        if(!b || !b.sevkler) throw 0;
+        var have={}; D.sevkler.forEach(function(x){ have[x.id]=1; });
+        var add=b.sevkler.filter(function(x){ return !have[x.id]; });
+        ask("Yedek: "+dmy(o.at)+"\n"+b.sevkler.length+" sevk içeriyor, "+add.length+" tanesi bu telefonda yok.\nEksik sevkler eklensin mi? Mevcut sevkler değişmez.", function(){
+          D.sevkler=D.sevkler.concat(add);
+          ["bayi","urun"].forEach(function(k){ (b.names&&b.names[k]||[]).slice().reverse().forEach(function(v){ if(D.names[k].indexOf(v)<0) D.names[k].push(v); }); });
+          if(b.names && b.names.urunUnit){ D.names.urunUnit=D.names.urunUnit||{}; for(var k in b.names.urunUnit) if(!D.names.urunUnit[k]) D.names.urunUnit[k]=b.names.urunUnit[k]; }
+          save(); render(); toast(add.length+" sevk eklendi");
+        }, "Ekle");
+      }catch(e){ toast("Bu dosya KK Okuyucu yedeği değil"); }
+    };
+    rd.readAsText(f);
+  };
+
   function markStarted(s){ if(s.status==="hazir") s.status="okutuluyor"; }
 
   // ---------- Paylaşım ----------
@@ -526,7 +628,7 @@ button:disabled{opacity:.45}
   }
   function scanFrame(){
     if(!running) return;
-    if(busy || !video.videoWidth || !lib() || tab!=="scan" || !$("confirm").hidden || !$("nameSheet").hidden){ timer=setTimeout(scanFrame,150); return; }
+    if(busy || !video.videoWidth || !lib() || tab!=="scan" || !$("confirm").hidden || !$("nameSheet").hidden || !$("moveSheet").hidden){ timer=setTimeout(scanFrame,150); return; }
     busy=true;
     var vw=video.videoWidth, vh=video.videoHeight, side=Math.min(vw,vh)*0.75/(hwZoom?1:zoom), out=Math.min(1000,Math.round(side));
     canvas.width=out; canvas.height=out;
@@ -542,11 +644,13 @@ button:disabled{opacity:.45}
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ setStatus("dup","Kamera desteklenmiyor","Sayfayı Safari'de ve https:// adresiyle açın."); return; }
     setStatus("","Kamera açılıyor…","");
     openCamera().then(function(){
-      $("camIdle").hidden=true; scanner=true; running=true;
+      $("camIdle").hidden=true; scanner=true; running=true; keepAwake();
       setStatus("","Okumaya hazır","Kodu kare çerçevenin içine getirin. Küçük etikette 2x deneyin.");
       scanFrame();
     }).catch(function(err){ setStatus("dup","Kamera açılamadı","Safari ayarlarından bu siteye kamera izni verin. ("+(err&&err.name||err)+")"); });
   }
+  var wl=null;
+  function keepAwake(){ try{ if(navigator.wakeLock && !wl) navigator.wakeLock.request("screen").then(function(l){ wl=l; l.addEventListener("release",function(){ wl=null; }); }).catch(function(){}); }catch(e){} }
   function stopCamera(){ running=false; clearTimeout(timer); if(stream){ stream.getTracks().forEach(function(t){t.stop()}); stream=null; } }
 
   // ---------- Gezinme ve pencereler ----------
@@ -560,13 +664,15 @@ button:disabled{opacity:.45}
   $("confirmYes").onclick=function(){ $("confirm").hidden=true; var f=pending; pending=null; if(f) f(); };
   $("confirmNo").onclick=function(){ $("confirm").hidden=true; pending=null; };
   var nameCb=null;
-  function askName(title,val,target,cb){ $("nameTitle").textContent=title; $("nameIn").value=val||""; $("targetIn").value=target||""; nameCb=cb; $("nameSheet").hidden=false; setTimeout(function(){$("nameIn").focus()},50); }
-  $("nameForm").onsubmit=function(e){ e.preventDefault(); var v=$("nameIn").value.trim(), t=parseInt($("targetIn").value,10); $("nameSheet").hidden=true; var f=nameCb; nameCb=null; if(f) f(v, t>0?t:0); };
+  function askName(title,val,target,unit,cb){ $("nameTitle").textContent=title; $("nameIn").value=val||""; $("targetIn").value=target||""; $("unitIn").value=unit||D.unit||"çvl"; nameCb=cb; $("nameSheet").hidden=false; setTimeout(function(){$("nameIn").focus()},50); }
+  $("nameForm").onsubmit=function(e){ e.preventDefault(); var v=$("nameIn").value.trim(), t=parseInt($("targetIn").value,10), u=$("unitIn").value; $("nameSheet").hidden=true; D.unit=u; if(v){ D.names.urunUnit=D.names.urunUnit||{}; D.names.urunUnit[v.toLocaleUpperCase("tr")]=u; } var f=nameCb; nameCb=null; if(f) f(v, t>0?t:0, u); };
+  // daha önce kullanılan ürün seçilince birimini hatırla
+  $("nameIn").addEventListener("change",function(){ var m=D.names.urunUnit&&D.names.urunUnit[this.value.trim().toLocaleUpperCase("tr")]; if(m) $("unitIn").value=m; });
   $("nameNo").onclick=function(){ $("nameSheet").hidden=true; nameCb=null; };
   function newGroup(){
     var s=cur(); if(!s) return;
-    askName("Yeni ürün","",0,function(v,t){ s.groups.push({name:v,codes:[],target:t}); s.active=s.groups.length-1; remember("urun",v); save(); render();
-      setStatus("",(v||"Ürün")+" seçildi"+(t?" · hedef "+t+" "+s.unit:""),"Kodları okutmaya başlayın."); });
+    askName("Yeni ürün","",0,D.unit,function(v,t,u){ s.groups.push({name:v,codes:[],target:t,unit:u}); s.active=s.groups.length-1; remember("urun",v); save(); render();
+      setStatus("",(v||"Ürün")+" seçildi"+(t?" · hedef "+t+" "+u:""),"Kodları okutmaya başlayın."); });
   }
 
   $("tabSv").onclick=function(){ showTab("sv"); };
@@ -574,10 +680,10 @@ button:disabled{opacity:.45}
   $("tabScan").onclick=function(){ showTab("scan"); };
   $("newBtn").onclick=function(){ var s=newSevk(); D.sevkler.push(s); D.cur=s.id; save(); showTab("list"); setTimeout(function(){ $("bayi").focus(); },60); };
   $("startBtn").onclick=start;
+  $("undoBtn").onclick=undoLast;
   $("zoom").onclick=function(e){ var b=e.target.closest("button"); if(b) setZoom(+b.dataset.z); };
   $("bayi").oninput=function(){ var s=cur(); if(!s) return; s.bayi=this.value; save(); $("preview").textContent=textOut(s)||"(henüz kod yok)"; };
   $("bayi").onchange=function(){ var s=cur(); if(!s) return; remember("bayi",this.value); save(); render(); };
-  $("unit").onchange=function(){ var s=cur(); if(!s) return; s.unit=D.unit=this.value; save(); render(); };
   $("addGrpBtn").onclick=newGroup;
   $("goScanBtn").onclick=function(){ showTab("scan"); };
   $("codesBtn").onclick=function(){ var s=cur(), all=[]; s.groups.forEach(function(g){ g.codes.forEach(function(c){ all.push(c.code); }); }); copyText(all.join("\n")); };
@@ -587,7 +693,7 @@ button:disabled{opacity:.45}
   document.addEventListener("visibilitychange",function(){
     if(!scanner) return;
     if(document.hidden) stopCamera();
-    else openCamera().then(function(){ running=true; scanFrame(); }).catch(function(){ $("camIdle").hidden=false; });
+    else openCamera().then(function(){ running=true; keepAwake(); scanFrame(); }).catch(function(){ $("camIdle").hidden=false; });
   });
   setTimeout(function(){ try{ lib()&&lib().readBarcodes(new ImageData(8,8),{formats:["QRCode"]}).catch(function(){}); }catch(e){} },300);
 
