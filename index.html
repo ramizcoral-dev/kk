@@ -864,6 +864,7 @@ function parseRows(rows){
         var base=JSON.parse(JSON.stringify(G.raw||{items:[],names:[]})), im={}, addN=0, addG=0;
         (base.items||[]).forEach(function(it){ im[it.g]=it; });
         var nameSet={}; (base.names||[]).forEach(function(n){ nameSet[trUp(n)]=1; });
+        var resetM=false;
         wb.SheetNames.forEach(function(sn){
           var rows=X.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:""}), hi=-1, cg=-1, cn=-1, kind="";
           for(var i=0;i<Math.min(rows.length,10)&&hi<0;i++){ rows[i].forEach(function(v,j){ var u=trUp(v);
@@ -872,6 +873,8 @@ function parseRows(rows){
             else if(/^BARKOD$|^GTIN$/.test(u)){ cg=j; kind=kind||"b"; }
             else if(/^ÜRÜN$|^URUN_ISMI$|^ÜRÜN ADI$/.test(u)) cn=j; }); if(cg>=0&&cn>=0) hi=i; }
           if(hi<0) return;
+          // Mikro dosyası gelince eski Mikro adları silinip dosyadakilerle yeniden kurulur (yanlış GTIN düzeltmeleri böylece uygulanır)
+          if(kind==="m" && !resetM){ resetM=true; base.items.forEach(function(it){ it.m=[]; }); base.names=[]; nameSet={}; }
           for(var r=hi+1;r<rows.length;r++){
             var k=String(rows[r][cg]||"").trim(), n=String(rows[r][cn]||"").replace(/\s+/g," ").trim(); if(!n) continue;
             if(/^\d{8,14}$/.test(k)){
@@ -880,6 +883,7 @@ function parseRows(rows){
             }else if(!nameSet[trUp(n)]){ nameSet[trUp(n)]=1; (base.names=base.names||[]).push(n); addN++; }
           }
         });
+        if(resetM) base.items=base.items.filter(function(it){ return it.m.length || it.b; });
         if(!addG && !addN && !base.items.length){ toast("Dosyada Stok kısa ismi/Stok ismi veya Ürün/Barkod sütunu bulunamadı"); return; }
         var d=new Date(); base.v=d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate()); base.src=f.name;
         try{ localStorage.setItem(DICT_KEY, JSON.stringify(base)); }catch(e){}
