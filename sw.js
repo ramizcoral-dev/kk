@@ -1,6 +1,6 @@
 // KK Okuyucu çevrimdışı önbelleği. Yeni sürüm yayınlarken VERSION'ı artırın.
-const VERSION = "kk-v4";
-const FILES = ["./", "./index.html", "./zxing-reader.js", "./zxing_reader.wasm", "./manifest.json", "./icon-180.png", "./icon-512.png"];
+const VERSION = "kk-v5";
+const FILES = ["./", "./index.html", "./zxing-reader.js", "./zxing_reader.wasm", "./manifest.json", "./icon-180.png", "./icon-512.png", "./xlsx.mini.min.js"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

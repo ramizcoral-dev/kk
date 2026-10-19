@@ -124,6 +124,16 @@ li.hit{animation:hit 1.6s}
 .backup button{flex:1;padding:10px;font-size:14px}
 .note{font-size:12px;color:var(--muted);margin:4px 0 0}
 #moveList{display:flex;flex-direction:column;gap:8px}
+#impSheet .box{max-height:88vh;overflow-y:auto}
+#impText{width:100%;min-height:120px;font:13px var(--mono);padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg);resize:vertical}
+.imp-b{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px}
+.imp-b.off{opacity:.5}
+.imp-b label.hd{display:flex;gap:8px;align-items:flex-start;font-weight:700}
+.imp-b .meta{font-size:12px;color:var(--muted);font-weight:400}
+.imp-i{display:grid;grid-template-columns:1fr 4.2em 5em;gap:6px;align-items:center;font-size:13px}
+.imp-i span{min-width:0;word-break:break-word}
+.imp-i input,.imp-i select{padding:6px;font-size:14px}
+.imp-i small{grid-column:1/-1;color:var(--muted);font-size:11.5px;margin-top:-4px}
 .empty{color:var(--muted);text-align:center;padding:14px 0;font-size:14px}
 .preview{font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-all;background:var(--chip);border-radius:10px;padding:10px;max-height:160px;overflow:auto;margin:0}
 
@@ -207,6 +217,7 @@ button:disabled{opacity:.45}
 </main>
 
 <footer class="gut" id="footSv">
+  <button id="impBtn" type="button">Listeden aktar</button>
   <button class="primary" id="newBtn" type="button">+ Yeni sevk hazırla</button>
 </footer>
 <footer class="gut" id="footWork" hidden>
@@ -242,6 +253,28 @@ button:disabled{opacity:.45}
   </div>
 </div>
 <input type="file" id="restoreIn" accept=".json,application/json" hidden>
+<input type="file" id="impFile" accept=".xlsx,.xls,.txt,.csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
+<div class="sheet" id="impSheet" hidden>
+  <div class="box">
+    <div id="impStep1">
+      <p><b>Sevk listesini aktar</b></p>
+      <p class="note">WhatsApp'taki yükleme listesini kopyalayıp aşağıya yapıştırın ya da Excel/txt dosyası seçin (Mikro sevkiyat listesi veya BAYİ-ÜRÜN-ADET-KOLİ tablosu).</p>
+      <textarea id="impText" placeholder="*ÇELİK ZİRAAT*&#10;  NUTRİACTİVE 15-30-15 (25 KG)  |  5adet&#10;..."></textarea>
+      <div class="row" style="margin-top:8px">
+        <button type="button" id="impPick" style="flex:1">Dosya seç</button>
+        <button type="button" class="primary" id="impParse">Önizle</button>
+      </div>
+    </div>
+    <div id="impStep2" hidden>
+      <p><b id="impTitle"></b></p>
+      <p class="note">Birimi ve hedefi gerekirse değiştirin. İşaretli bayiler "Hazırlananlar"a eklenir.</p>
+      <div id="impList" style="display:flex;flex-direction:column;gap:8px;margin-top:6px"></div>
+      <button type="button" class="primary" id="impDo" style="margin-top:8px">Aktar</button>
+      <button type="button" id="impBack">Geri</button>
+    </div>
+    <button type="button" id="impNo">Vazgeç</button>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script src="zxing-reader.js"></script>
@@ -382,7 +415,7 @@ button:disabled{opacity:.45}
     sm.textContent = s.groups.length ? s.groups.map(function(g){ return (g.name||"Ürün")+" "+cnt(g); }).join(" · ") : "Ürün eklenmedi";
     c.appendChild(sm);
     var tm=document.createElement("div"); tm.className="sm";
-    tm.textContent = s.status==="gonderildi" ? "Gönderildi: "+dmy(s.sentAt) : "Hazırlandı: "+dmy(s.created);
+    tm.textContent = (s.status==="gonderildi" ? "Gönderildi: "+dmy(s.sentAt) : "Hazırlandı: "+dmy(s.created)) + (s.sip && s.sip.length ? " · "+s.sip.join(", ") : "");
     c.appendChild(tm);
     var acts=document.createElement("div"); acts.className="acts";
     var op=document.createElement("button"); op.type="button"; op.className="primary";
@@ -591,6 +624,134 @@ button:disabled{opacity:.45}
       }catch(e){ toast("Bu dosya KK Okuyucu yedeği değil"); }
     };
     rd.readAsText(f);
+  };
+
+// ---- Sevk listesi ayrıştırıcı: WhatsApp/txt yükleme listesi, BAYİ-ÜRÜN-ADET-KOLİ tablosu, Mikro sevkiyat listesi
+function trUp(s){ return String(s==null?"":s).toLocaleUpperCase("tr").replace(/\s+/g," ").trim(); }
+function num(v){ var n=parseFloat(String(v==null?"":v).replace(/\./g,"").replace(",",".")); return isFinite(n)?Math.round(n):0; }
+function cleanBayi(s){ return String(s).replace(/^\s*cari\s*hesap\s*ad[ıi]\s*:\s*/i,"").replace(/^\*+|\*+$/g,"").replace(/\s+/g," ").trim(); }
+
+function parseText(txt){
+  var out=[], curB=null;
+  String(txt).split(/\r?\n/).forEach(function(line){
+    var l=line.trim(); if(!l) return;
+    if(/^[=\-_*~]{4,}$/.test(l)) return;
+    var m=/^(.+?)\s*\|\s*(\d+)\s*(?:adet|ad\.?|çvl|çuval|kutu|ad)?\s*(?:[-–,]\s*(\d+)\s*koli)?\s*$/i.exec(l);
+    if(m){ if(curB) curB.items.push({name:m[1].replace(/^[-•·]\s*/,"").trim(), adet:+m[2], koli:m[3]?+m[3]:0}); return; }
+    var b=/^\*(.+)\*$/.exec(l) || /^cari\s*hesap\s*ad[ıi]\s*:\s*(.+)$/i.exec(l);
+    if(b){ curB={bayi:cleanBayi(b[1]), items:[]}; out.push(curB); return; }
+  });
+  return out.filter(function(b){return b.items.length});
+}
+
+function parseRows(rows){
+  var hi=-1, col={};
+  for(var i=0;i<Math.min(rows.length,15) && hi<0;i++){
+    var c={}; rows[i].forEach(function(v,j){ var u=trUp(v);
+      if(/^(BAY[İI]|CAR[İI]|MÜŞTER[İI]|CARİ HESAP ADI)$/.test(u)) c.bayi=j;
+      else if(/^(ÜRÜN|URUN|STOK [İI]SM[İI]|STOK ADI|ÜRÜN ADI|MALZEME)$/.test(u)) c.urun=j;
+      else if(/^(ADET|M[İI]KTAR)$/.test(u)) c.adet=j;
+      else if(/^KOL[İI]$/.test(u)) c.koli=j;
+      else if(/^S[İI]PAR[İI][ŞS] NO$/.test(u)) c.sip=j;
+    });
+    if(c.urun!=null && c.adet!=null){ hi=i; col=c; }
+  }
+  if(hi<0) return [];
+  var out=[], map={}, curB=null;
+  function bucket(name){ var k=trUp(name); if(!map[k]){ map[k]={bayi:name, items:[], sip:[]}; out.push(map[k]); } return map[k]; }
+  for(var r=hi+1;r<rows.length;r++){
+    var row=rows[r]||[];
+    var sec=null; row.forEach(function(v){ if(!sec && /^\s*cari\s*hesap\s*ad[ıi]\s*:/i.test(String(v))) sec=cleanBayi(v); });
+    if(sec){ curB=bucket(sec); continue; }
+    var nm=String(row[col.urun]==null?"":row[col.urun]).trim(); if(!nm) continue;
+    var b = col.bayi!=null && String(row[col.bayi]||"").trim() ? bucket(cleanBayi(row[col.bayi])) : curB;
+    if(!b) continue;
+    b.items.push({name:nm, adet:num(row[col.adet]), koli:col.koli!=null?num(row[col.koli]):0});
+    if(col.sip!=null){ var s=String(row[col.sip]||"").trim(); if(s && b.sip.indexOf(s)<0) b.sip.push(s); }
+  }
+  return out.filter(function(b){return b.items.length});
+}
+
+  // ---------- Listeden aktar ----------
+  var impData=[];
+  function loadXlsx(){
+    if(window.XLSX) return Promise.resolve(window.XLSX);
+    return new Promise(function(ok,no){ var sc=document.createElement("script"); sc.src="xlsx.mini.min.js"; sc.onload=function(){ ok(window.XLSX); }; sc.onerror=function(){ no(new Error("Excel okuyucu yüklenemedi")); }; document.head.appendChild(sc); });
+  }
+  function impUnit(name, adet, koli){
+    var m=D.names.urunUnit && D.names.urunUnit[trUp(name)];
+    if(m==="koli" && !koli) m=null;
+    var u = m || (koli>0 ? "koli" : "çvl");
+    return {unit:u, target: u==="koli" ? koli : adet};
+  }
+  function impShow(list, src){
+    impData=list.map(function(b){
+      var dup=D.sevkler.some(function(s){ return s.status!=="gonderildi" && trUp(s.bayi)===trUp(b.bayi); });
+      return {bayi:b.bayi, sip:b.sip||[], on:!dup, dup:dup, items:b.items.map(function(it){ var d=impUnit(it.name,it.adet,it.koli); return {name:it.name, adet:it.adet, koli:it.koli, unit:d.unit, target:d.target}; })};
+    });
+    if(!impData.length){ toast("Listede bayi/ürün bulunamadı. Biçimi kontrol edin."); return; }
+    $("impTitle").textContent=src+": "+impData.length+" bayi, "+impData.reduce(function(a,b){return a+b.items.length},0)+" kalem";
+    var L=$("impList"); L.innerHTML="";
+    impData.forEach(function(b){
+      var box=document.createElement("div"); box.className="imp-b"+(b.on?"":" off");
+      var hd=document.createElement("label"); hd.className="hd";
+      var cb=document.createElement("input"); cb.type="checkbox"; cb.checked=b.on;
+      cb.onchange=function(){ b.on=cb.checked; box.className="imp-b"+(b.on?"":" off"); updImp(); };
+      var t=document.createElement("span"); t.textContent=b.bayi;
+      var mt=document.createElement("span"); mt.className="meta"; mt.textContent=(b.sip.length?" "+b.sip.join(", "):"")+(b.dup?" · Bu bayi için açık sevk zaten var":"");
+      t.appendChild(mt); hd.appendChild(cb); hd.appendChild(t); box.appendChild(hd);
+      b.items.forEach(function(it){
+        var r=document.createElement("div"); r.className="imp-i";
+        var n=document.createElement("span"); n.textContent=it.name;
+        var ti=document.createElement("input"); ti.type="number"; ti.inputMode="numeric"; ti.min="0"; ti.value=it.target||""; ti.setAttribute("aria-label","Hedef");
+        ti.oninput=function(){ it.target=parseInt(ti.value,10)||0; };
+        var us=document.createElement("select"); us.setAttribute("aria-label","Birim");
+        ["çvl","koli","kutu","palet","adet"].forEach(function(u){ var o=document.createElement("option"); o.textContent=u; us.appendChild(o); }); us.value=it.unit;
+        us.onchange=function(){ it.unit=us.value; it.target = it.unit==="koli" ? it.koli : it.adet; ti.value=it.target||""; };
+        var sm=document.createElement("small"); sm.textContent="Mikro: "+it.adet+" adet"+(it.koli?" · "+it.koli+" koli":"");
+        r.appendChild(n); r.appendChild(ti); r.appendChild(us); r.appendChild(sm); box.appendChild(r);
+      });
+      L.appendChild(box);
+    });
+    $("impStep1").hidden=true; $("impStep2").hidden=false; updImp();
+  }
+  function updImp(){ var n=impData.filter(function(b){return b.on}).length; $("impDo").textContent=n? "Aktar ("+n+" sevk)" : "Bayi seçin"; $("impDo").disabled=!n; }
+  function impOpen(){ $("impText").value=""; $("impStep1").hidden=false; $("impStep2").hidden=true; $("impSheet").hidden=false; }
+  $("impBtn").onclick=impOpen;
+  $("impNo").onclick=function(){ $("impSheet").hidden=true; };
+  $("impBack").onclick=function(){ $("impStep1").hidden=false; $("impStep2").hidden=true; };
+  $("impPick").onclick=function(){ $("impFile").value=""; $("impFile").click(); };
+  $("impParse").onclick=function(){ var t=$("impText").value; if(!t.trim()){ toast("Önce listeyi yapıştırın"); return; } impShow(parseText(t),"Yapıştırılan liste"); };
+  $("impFile").onchange=function(){
+    var f=this.files&&this.files[0]; if(!f) return;
+    var rd=new FileReader();
+    if(/\.(txt|csv)$/i.test(f.name) || /^text\//.test(f.type)){
+      rd.onload=function(){
+        var t=String(rd.result), r=parseText(t);
+        if(!r.length && /[;\t,]/.test(t)){ var sep=t.indexOf(";")>=0?";":(t.indexOf("\t")>=0?"\t":","); r=parseRows(t.split(/\r?\n/).map(function(l){return l.split(sep)})); }
+        impShow(r,f.name);
+      };
+      rd.readAsText(f);
+    }else{
+      rd.onload=function(){
+        loadXlsx().then(function(X){
+          var wb=X.read(new Uint8Array(rd.result),{type:"array"}), all=[];
+          wb.SheetNames.forEach(function(sn){ var rows=X.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:""}); all=all.concat(parseRows(rows)); });
+          impShow(all,f.name);
+        }).catch(function(e){ toast("Dosya okunamadı: "+(e&&e.message||e)); });
+      };
+      rd.readAsArrayBuffer(f);
+    }
+  };
+  $("impDo").onclick=function(){
+    var n=0;
+    impData.forEach(function(b){
+      if(!b.on) return;
+      var s=newSevk(); s.bayi=b.bayi; s.sip=b.sip.slice(); s.groups=b.items.map(function(it){ return {name:it.name, codes:[], target:it.target||0, unit:it.unit}; });
+      D.sevkler.push(s); n++; remember("bayi",b.bayi);
+      b.items.forEach(function(it){ remember("urun",it.name); D.names.urunUnit=D.names.urunUnit||{}; D.names.urunUnit[trUp(it.name)]=it.unit; });
+    });
+    $("impSheet").hidden=true; save(); showTab("sv"); toast(n+" sevk hazırlananlara eklendi");
   };
 
   function markStarted(s){ if(s.status==="hazir") s.status="okutuluyor"; }
