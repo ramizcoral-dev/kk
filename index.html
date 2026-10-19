@@ -105,6 +105,7 @@ input,select{font:15px var(--font);padding:9px 10px;border-radius:10px;border:1p
 .grp.on{border-color:var(--accent)}
 .gh{display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .gh .nm{flex:1;min-width:8em;font-weight:700;word-break:break-word}
+.gh .nm small.gt{display:block;font-weight:400;font-size:11.5px;color:var(--ok)}
 .gh .ct{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px;white-space:nowrap}
 .gh button{border:0;background:none;color:var(--muted);font-size:13px;padding:4px 6px}
 ol.codes{list-style:none;margin:0;padding:0 12px}
@@ -253,6 +254,7 @@ button:disabled{opacity:.45}
   </div>
 </div>
 <input type="file" id="restoreIn" accept=".json,application/json" hidden>
+<input type="file" id="dictIn" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
 <input type="file" id="impFile" accept=".xlsx,.xls,.txt,.csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
 <div class="sheet" id="impSheet" hidden>
   <div class="box">
@@ -303,6 +305,41 @@ button:disabled{opacity:.45}
   function newSevk(){ return {id:uid(), bayi:"", unit:D.unit||"çvl", groups:[], active:0, status:"hazir", created:Date.now(), updated:Date.now(), sentAt:null}; }
 
   // Kodun "seri" kısmı: BKST kutu kodunda GTIN, GTS kodunda sondaki 6 haneden önceki kısım. SSCC koli/palet kontrol edilmez.
+  // ---------- Ürün sözlüğü (GTIN → Mikro stok ismi / BKST adı) ----------
+  var DICT_KEY="kk-urunler";
+  var G={loaded:false, v:"", byGtin:{}, byName:{}, names:[]};
+  function setDict(d){
+    var bg={}, bn={}, nm=[];
+    (d.items||[]).forEach(function(it){ bg[it.g]=it; (it.m||[]).forEach(function(n){ bn[trUp(n)]=it.g; nm.push(n); }); if(it.b) bn[trUp(it.b)]=bn[trUp(it.b)]||it.g; });
+    (d.names||[]).forEach(function(n){ nm.push(n); });
+    G={loaded:true, v:d.v||"", src:d.src||"", count:(d.items||[]).length, byGtin:bg, byName:bn, names:nm, raw:d};
+  }
+  function loadDict(){
+    var local=null; try{ local=JSON.parse(localStorage.getItem(DICT_KEY)||"null"); }catch(e){}
+    if(local) setDict(local);
+    fetch("urunler.json").then(function(r){ return r.ok?r.json():null; }).then(function(d){
+      if(d && (!local || String(d.v)>String(local.v))) setDict(d);
+      render();
+    }).catch(function(){ render(); });
+  }
+  function prodName(gt){ var it=G.byGtin[gt]; return it ? ((it.m&&it.m[0]) || it.b) : null; }
+  function gGtin(g){ return g.gtin || G.byName[trUp(g.name)] || null; }
+  // GS1 karekod alanları: 01 GTIN, 17 SKT, 10 lot, 21 seri no, 00 SSCC (koli/palet). Ayraç: GS (\x1d)
+  function gs1(raw){
+    var t=String(raw).replace(/^\][A-Za-z]\d/,""), o={}, i=0, guard=0;
+    while(i<t.length && guard++<20){
+      if(t.charCodeAt(i)===29){ i++; continue; }
+      var ai=t.substr(i,2);
+      if(ai==="01" && /^\d{14}$/.test(t.substr(i+2,14))){ o.gtin=t.substr(i+2,14); i+=16; continue; }
+      if(ai==="17" && /^\d{6}$/.test(t.substr(i+2,6))){ o.skt=t.substr(i+2,6); i+=8; continue; }
+      if(ai==="00" && /^\d{18}$/.test(t.substr(i+2,18))){ o.sscc=t.substr(i+2,18); i+=20; continue; }
+      if(ai==="10" || ai==="21"){ var j=t.indexOf("\x1d",i+2); if(j<0) j=t.length; o[ai==="10"?"lot":"sn"]=t.slice(i+2,j); i=j; continue; }
+      break;
+    }
+    return o;
+  }
+  function sktFmt(y){ return y ? y.substr(4,2)+"."+y.substr(2,2)+".20"+y.substr(0,2) : ""; }
+
   function seriesKey(c){
     if(/^00\d{18}$/.test(c)) return null;
     if(/^01\d{14}/.test(c)) return "01"+c.substr(2,14);
@@ -369,7 +406,9 @@ button:disabled{opacity:.45}
     $("shareBtn").disabled=$("copyBtn").disabled=!total(s);
     renderList(s); renderScan(s);
     $("bayiList").innerHTML=""; D.names.bayi.forEach(function(v){ var o=document.createElement("option"); o.value=v; $("bayiList").appendChild(o); });
-    $("urunList").innerHTML=""; D.names.urun.forEach(function(v){ var o=document.createElement("option"); o.value=v; $("urunList").appendChild(o); });
+    var ul=$("urunList"); if(ul.dataset.n!==String(D.names.urun.length+"/"+G.names.length)){ ul.innerHTML=""; var seen={};
+      D.names.urun.concat(G.names).forEach(function(v){ var k=trUp(v); if(seen[k]) return; seen[k]=1; var o=document.createElement("option"); o.value=v; ul.appendChild(o); });
+      ul.dataset.n=D.names.urun.length+"/"+G.names.length; }
   }
 
   function backupBox(box){
@@ -382,6 +421,15 @@ button:disabled{opacity:.45}
     n.textContent=(D.lastBackup?"Son yedek: "+dmy(D.lastBackup)+". ":"Henüz yedek alınmadı. ")+"Yedek al → Dosyalar'a Kaydet → Drive → KK Okuyucu Yedek klasörü.";
     box.appendChild(n);
     var o=document.createElement("p"); o.className="note"; o.id="offNote"; o.textContent=offText(); box.appendChild(o);
+    var h2=document.createElement("p"); h2.className="sec"; h2.textContent="Ürün sözlüğü"; box.appendChild(h2);
+    var dn=document.createElement("p"); dn.className="note";
+    dn.textContent = G.loaded ? G.count+" ilaç GTIN'i tanımlı ("+G.v+"). Kutu karekodları bu listeyle kontrol edilir." : "Sözlük yükleniyor…";
+    box.appendChild(dn);
+    var db=document.createElement("div"); db.className="backup";
+    var du=document.createElement("button"); du.type="button"; du.textContent="Sözlüğü güncelle"; du.onclick=function(){ $("dictIn").value=""; $("dictIn").click(); };
+    db.appendChild(du); box.appendChild(db);
+    var dn2=document.createElement("p"); dn2.className="note"; dn2.textContent="Mikro stok kartları (Stok kısa ismi + Stok ismi) veya BKST TAKİP stok (Ürün + Barkod) Excel'ini seçin.";
+    box.appendChild(dn2);
   }
   var offReady=false;
   function offText(){ return (offReady ? "✓ İnternetsiz kullanıma hazır." : "İnternetsiz kullanım hazırlanıyor… (ilk açılışta internet gerekir)") + (navigator.onLine===false ? " · Şu an internet yok." : ""); }
@@ -438,6 +486,7 @@ button:disabled{opacity:.45}
       var box=document.createElement("div"); box.className="grp"+(gi===s.active?" on":"");
       var h=document.createElement("div"); h.className="gh";
       var nm=document.createElement("span"); nm.className="nm"; nm.textContent=g.name||"Ürün adı yok";
+      var gg=gGtin(g); if(gg){ var bd=document.createElement("small"); bd.className="gt"; bd.textContent="✓ GTIN "+gg.slice(-6); bd.title=prodName(gg)||""; nm.appendChild(bd); }
       var ct=document.createElement("span"); ct.className="ct"; ct.textContent=cnt(g)+" "+un(s,g);
       var ed=document.createElement("button"); ed.type="button"; ed.textContent="Düzenle";
       ed.onclick=function(){ askName("Ürün düzenle",g.name,g.target,un(s,g),function(v,t,u){ g.name=v; g.target=t; g.unit=u; remember("urun",v); save(); render(); }); };
@@ -486,7 +535,7 @@ button:disabled{opacity:.45}
     var li=document.createElement("li"); if(hitCode && c.code===hitCode) li.className="hit";
     var n=document.createElement("span"); n.className="n"; n.textContent=(ci+1)+".";
     var v=document.createElement("span"); v.className="v"; v.textContent=c.code;
-    var sm=document.createElement("small"); sm.textContent=hhmm(c.time)+(c.dup?" · mükerrer":"")+(c.odd?" · farklı seri":"")+(c.over?" · hedef fazlası":"");
+    var sm=document.createElement("small"); sm.textContent=hhmm(c.time)+(c.dup?" · mükerrer":"")+(c.skt?" · SKT "+sktFmt(c.skt):"")+(c.odd?" · farklı seri":"")+(c.over?" · hedef fazlası":"");
     if(c.odd||c.over) sm.className="w"; v.appendChild(sm);
     var x=document.createElement("button"); x.type="button"; x.className="x"; x.setAttribute("aria-label","Sil"); x.textContent="×";
     x.onclick=function(){ ask((ci+1)+". kod silinsin mi?\n"+c.code,function(){ s.groups[gi].codes.splice(ci,1); save(); render(); },"Sil"); };
@@ -542,22 +591,46 @@ button:disabled{opacity:.45}
       return;
     }
 
-    var k=seriesKey(code), ref=null;
-    for(var i=0;i<g.codes.length && !ref;i++){ var rk=seriesKey(g.codes[i].code); if(rk && !g.codes[i].odd) ref=rk; }
-    var odd=!!(k && ref && k!==ref), over=!!(g.target && g.codes.length>=g.target);
-    var rec={code:code,time:now}; if(odd) rec.odd=true; if(over) rec.over=true;
+    // ürün kontrolü: kutu karekodundaki GTIN sözlükle karşılaştırılır
+    var info=gs1(raw), gt=info.gtin || (/^01\d{14}/.test(code)?code.substr(2,14):null), notes=[], switched=false, odd=false, ref=null;
+    var pn = gt ? prodName(gt) : null;
+    if(gt){
+      var mine=gGtin(g);
+      if(mine!==gt){
+        var idx=-1; s.groups.forEach(function(gg,i){ if(idx<0 && gGtin(gg)===gt) idx=i; });
+        if(idx>=0){ s.active=idx; g=s.groups[idx]; switched=true; }
+        else if(!mine && !G.byName[trUp(g.name)] && !g.codes.length){ g.gtin=gt; if(pn) notes.push("Tanındı: "+pn); }
+        else{
+          beep("dup"); flash("dup");
+          setStatus("dup","YANLIŞ ÜRÜN! Bu kod "+(pn||"bilinmeyen ürün (GTIN "+gt+")")+" — bu sevkte yok. Eklenmedi.", code);
+          last={code:code,at:now}; return;
+        }
+      }
+    }else{
+      var k=seriesKey(code);
+      for(var i=0;i<g.codes.length && !ref;i++){ var rk=seriesKey(g.codes[i].code); if(rk && !g.codes[i].odd) ref=rk; }
+      odd=!!(k && ref && k!==ref);
+    }
+    var over=!!(g.target && g.codes.length>=g.target);
+    var newSkt = !!(info.skt && g.codes.length && g.codes.some(function(c){return c.skt}) && !g.codes.some(function(c){return c.skt===info.skt}));
+    var rec={code:code,time:now}; if(odd) rec.odd=true; if(over) rec.over=true; if(info.skt) rec.skt=info.skt; if(gt) rec.gt=gt;
     g.codes.push(rec); markStarted(s); lastAdd={sid:s.id, code:code};
     var nm=g.name||"Ürün";
-    if(over){ beep("warn"); flash("warn"); setStatus("warn","Hedef aşıldı! "+nm+": "+g.codes.length+"/"+g.target+" "+un(s,g)+(odd?" · farklı seri":""), code); }
+    if(switched) notes.unshift("→ "+nm+" ürününe eklendi");
+    if(newSkt) notes.push("Farklı SKT: "+sktFmt(info.skt));
+    if(info.sscc && !gt) notes.push("Koli/palet kodu: ürün kontrolü yapılamaz");
+    var sub=code+(pn?" · "+pn:"")+(info.skt?" · SKT "+sktFmt(info.skt):""), tail=notes.length?" · "+notes.join(" · "):"";
+    if(over){ beep("warn"); flash("warn"); setStatus("warn","Hedef aşıldı! "+nm+": "+g.codes.length+"/"+g.target+" "+un(s,g)+(odd?" · farklı seri":"")+tail, sub); }
+    else if(newSkt){ beep("warn"); flash("warn"); setStatus("warn",nm+": "+(g.target? g.codes.length+"/"+g.target+" "+un(s,g) : g.codes.length+". kod")+tail, sub); }
     else if(g.target && g.codes.length===g.target && !odd){
       beep("done"); flash("ok");
       var nx=nextOpen(s), msg="Tamamlandı: "+nm+" "+g.codes.length+"/"+g.target+" "+un(s,g);
       if(nx>=0 && $("optNext").checked){ s.active=nx; msg+=" → Sıradaki: "+(s.groups[nx].name||"Ürün"); last={code:null,at:0}; }
       else if(nx<0 && s.groups.every(function(x){return x.target && x.codes.length>=x.target})) msg+=" · Tüm ürünler tamam, gönderebilirsiniz.";
-      setStatus("ok", msg, code);
+      setStatus("ok", msg+tail, sub);
     }
-    else if(odd){ beep("warn"); flash("warn"); setStatus("warn","Farklı seri! Bu üründeki kodlar "+ref+"… ile başlıyor. Başka ürün olabilir, kontrol edin.", code); }
-    else{ beep("ok"); flash("ok"); setStatus("ok",nm+": "+(g.target? g.codes.length+"/"+g.target+" "+un(s,g) : g.codes.length+". kod eklendi"), code); }
+    else if(odd){ beep("warn"); flash("warn"); setStatus("warn","Farklı seri! Bu üründeki kodlar "+ref+"… ile başlıyor. Başka ürün olabilir, kontrol edin.", sub); }
+    else{ beep("ok"); flash("ok"); setStatus("ok",nm+": "+(g.target? g.codes.length+"/"+g.target+" "+un(s,g) : g.codes.length+". kod eklendi")+tail, sub); }
     save(); render();
   }
   var lastAdd=null;
@@ -782,6 +855,40 @@ function parseRows(rows){
     $("impSheet").hidden=true; save(); showTab("sv"); toast(n+" sevk hazırlandı / güncellendi");
   };
 
+  $("dictIn").onchange=function(){
+    var f=this.files&&this.files[0]; if(!f) return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      loadXlsx().then(function(X){
+        var wb=X.read(new Uint8Array(rd.result),{type:"array"});
+        var base=JSON.parse(JSON.stringify(G.raw||{items:[],names:[]})), im={}, addN=0, addG=0;
+        (base.items||[]).forEach(function(it){ im[it.g]=it; });
+        var nameSet={}; (base.names||[]).forEach(function(n){ nameSet[trUp(n)]=1; });
+        wb.SheetNames.forEach(function(sn){
+          var rows=X.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:""}), hi=-1, cg=-1, cn=-1, kind="";
+          for(var i=0;i<Math.min(rows.length,10)&&hi<0;i++){ rows[i].forEach(function(v,j){ var u=trUp(v);
+            if(/^STOK KISA [İI]SM[İI]$|^KISA [İI]S[İI]M$/.test(u)){ cg=j; kind="m"; }
+            else if(/^STOK [İI]SM[İI]$/.test(u)) cn=j;
+            else if(/^BARKOD$|^GTIN$/.test(u)){ cg=j; kind=kind||"b"; }
+            else if(/^ÜRÜN$|^URUN_ISMI$|^ÜRÜN ADI$/.test(u)) cn=j; }); if(cg>=0&&cn>=0) hi=i; }
+          if(hi<0) return;
+          for(var r=hi+1;r<rows.length;r++){
+            var k=String(rows[r][cg]||"").trim(), n=String(rows[r][cn]||"").replace(/\s+/g," ").trim(); if(!n) continue;
+            if(/^\d{8,14}$/.test(k)){
+              var g=("00000000000000"+k).slice(-14), it=im[g]; if(!it){ it=im[g]={g:g,m:[],b:""}; base.items.push(it); addG++; }
+              if(kind==="m"){ if(it.m.map(trUp).indexOf(trUp(n))<0) it.m.push(n); } else it.b=n;
+            }else if(!nameSet[trUp(n)]){ nameSet[trUp(n)]=1; (base.names=base.names||[]).push(n); addN++; }
+          }
+        });
+        if(!addG && !addN && !base.items.length){ toast("Dosyada Stok kısa ismi/Stok ismi veya Ürün/Barkod sütunu bulunamadı"); return; }
+        var d=new Date(); base.v=d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate()); base.src=f.name;
+        try{ localStorage.setItem(DICT_KEY, JSON.stringify(base)); }catch(e){}
+        setDict(base); render(); toast("Sözlük güncellendi: "+base.items.length+" GTIN"+(addG?" (+"+addG+" yeni)":""));
+      }).catch(function(e){ toast("Dosya okunamadı: "+(e&&e.message||e)); });
+    };
+    rd.readAsArrayBuffer(f);
+  };
+
   function markStarted(s){ if(s.status==="hazir") s.status="okutuluyor"; }
 
   // ---------- Paylaşım ----------
@@ -898,7 +1005,7 @@ function parseRows(rows){
   });
   setTimeout(function(){ try{ lib()&&lib().readBarcodes(new ImageData(8,8),{formats:["QRCode"]}).catch(function(){}); }catch(e){} },300);
 
-  load(); save(); render();
+  load(); save(); loadDict(); render();
   if("serviceWorker" in navigator){
     navigator.serviceWorker.register("sw.js").then(function(){ return navigator.serviceWorker.ready; })
       .then(function(){ return caches.keys(); })
