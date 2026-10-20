@@ -147,6 +147,14 @@ button:disabled{opacity:.45}
 .sheet{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:20}
 .sheet .box{background:var(--panel);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px}
 .sheet p{margin:0 0 4px;font-size:15px;white-space:pre-wrap;word-break:break-word}
+#nameSheet{align-items:flex-start}
+#nameSheet .box{border-radius:0 0 16px 16px;padding-top:calc(16px + env(safe-area-inset-top,0px));padding-bottom:16px}
+.sug{display:flex;flex-direction:column;max-height:38vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px;margin-top:-4px}
+.sug button{text-align:left;font-weight:400;font-size:14px;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:10px 12px;background:var(--panel)}
+.sug button:last-child{border-bottom:0}
+.sug button b{font-weight:700}
+.sug button small{display:block;color:var(--muted);font-size:11.5px}
+#nameHint.ok{color:var(--ok)}
 #toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:20px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30}
 #toast.on{opacity:1}
 </style>
@@ -236,7 +244,9 @@ button:disabled{opacity:.45}
 <div class="sheet" id="nameSheet" hidden>
   <form class="box" id="nameForm" autocomplete="off">
     <p id="nameTitle">Ürün</p>
-    <input id="nameIn" list="urunList" placeholder="Ürün adı, örn. Kalsiyum Nitrat" enterkeyhint="next">
+    <input id="nameIn" placeholder="Ürün adı yazın, örn. arivo 250" enterkeyhint="next" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+    <div id="nameHint" class="note"></div>
+    <div id="nameSug" class="sug" hidden></div>
     <div class="row">
       <input id="targetIn" type="number" inputmode="numeric" min="0" placeholder="Hedef adet (isteğe bağlı)" enterkeyhint="done" style="flex:1">
       <select id="unitIn" aria-label="Birim"><option>çvl</option><option>koli</option><option>kutu</option><option>palet</option><option>adet</option></select>
@@ -976,11 +986,56 @@ function parseRows(rows){
   $("confirmYes").onclick=function(){ $("confirm").hidden=true; var f=pending; pending=null; if(f) f(); };
   $("confirmNo").onclick=function(){ $("confirm").hidden=true; pending=null; };
   var nameCb=null;
-  function askName(title,val,target,unit,cb){ $("nameTitle").textContent=title; $("nameIn").value=val||""; $("targetIn").value=target||""; $("unitIn").value=unit||D.unit||"çvl"; nameCb=cb; $("nameSheet").hidden=false; setTimeout(function(){$("nameIn").focus()},50); }
+  function askName(title,val,target,unit,cb){ $("nameTitle").textContent=title; $("nameIn").value=val||""; $("targetIn").value=target||""; $("unitIn").value=unit||D.unit||"çvl"; nameCb=cb; $("nameSug").hidden=true; $("nameSheet").hidden=false; nameState(); setTimeout(function(){$("nameIn").focus()},50); }
   $("nameForm").onsubmit=function(e){ e.preventDefault(); var v=$("nameIn").value.trim(), t=parseInt($("targetIn").value,10), u=$("unitIn").value; $("nameSheet").hidden=true; D.unit=u; if(v){ D.names.urunUnit=D.names.urunUnit||{}; D.names.urunUnit[v.toLocaleUpperCase("tr")]=u; } var f=nameCb; nameCb=null; if(f) f(v, t>0?t:0, u); };
   // daha önce kullanılan ürün seçilince birimini hatırla
   $("nameIn").addEventListener("change",function(){ var m=D.names.urunUnit&&D.names.urunUnit[this.value.trim().toLocaleUpperCase("tr")]; if(m) $("unitIn").value=m; });
   $("nameNo").onclick=function(){ $("nameSheet").hidden=true; nameCb=null; };
+  // ---- ürün adı önerileri (Mikro stok isimleri + daha önce kullanılanlar) ----
+  var FOLD={"Ç":"C","Ğ":"G","İ":"I","Ö":"O","Ş":"S","Ü":"U"};
+  function fold(x){ return trUp(x).replace(/[ÇĞİÖŞÜ]/g,function(c){ return FOLD[c]; }); }
+  function nkey(x){ return fold(x).replace(/[^0-9A-Z]/g,""); }
+  function sugList(q){
+    var toks=fold(q).split(/\s+/).map(function(t){ return t.replace(/[^0-9A-Z]/g,""); }).filter(Boolean);
+    if(!toks.length) return [];
+    var seen={}, out=[];
+    D.names.urun.concat(G.names).forEach(function(n,i){
+      var k=nkey(n); if(!k || seen[k]) return; seen[k]=1;
+      if(!toks.every(function(t){ return k.indexOf(t)>=0; })) return;
+      var score=(k.indexOf(toks[0])===0?0:1)*1000 + (i<D.names.urun.length?0:500) + i;
+      out.push({n:n,s:score});
+    });
+    out.sort(function(a,b){ return a.s-b.s; });
+    return out.slice(0,12).map(function(o){ return o.n; });
+  }
+  function nameState(){
+    var v=$("nameIn").value.trim(), h=$("nameHint"), gt=G.byName[trUp(v)];
+    if(!v){ h.textContent=""; h.className="note"; return; }
+    if(gt){ h.textContent="✓ Mikro ürünü tanındı · GTIN "+gt.slice(-6)+" · okutmada ürün kontrolü yapılır"; h.className="note ok"; }
+    else{ h.textContent="Listede yok: ilaçsa aşağıdan seçin; gübre/diğer için böyle kalabilir."; h.className="note"; }
+  }
+  function showSug(){
+    var v=$("nameIn").value, box=$("nameSug"), list=sugList(v);
+    box.innerHTML="";
+    if(!list.length || (list.length===1 && trUp(list[0])===trUp(v))){ box.hidden=true; nameState(); return; }
+    list.forEach(function(n){
+      var b=document.createElement("button"); b.type="button";
+      var t=document.createElement("b"); t.textContent=n; b.appendChild(t);
+      var gt=G.byName[trUp(n)]; if(gt){ var sm=document.createElement("small"); var bn=G.byGtin[gt]&&G.byGtin[gt].b; sm.textContent="GTIN "+gt.slice(-6)+(bn?" · "+bn:""); b.appendChild(sm); }
+      // dokunmada klavye kapanıp liste kaybolmasın diye pointerdown ile seç
+      b.addEventListener("pointerdown",function(e){ e.preventDefault(); pick(n); });
+      b.onclick=function(){ pick(n); };
+      box.appendChild(b);
+    });
+    box.hidden=false; nameState();
+  }
+  function pick(n){
+    $("nameIn").value=n; $("nameSug").hidden=true;
+    var m=D.names.urunUnit&&D.names.urunUnit[trUp(n)]; if(m) $("unitIn").value=m;
+    nameState(); $("targetIn").focus();
+  }
+  $("nameIn").addEventListener("input",showSug);
+  $("nameIn").addEventListener("focus",showSug);
   function newGroup(){
     var s=cur(); if(!s) return;
     askName("Yeni ürün","",0,D.unit,function(v,t,u){ s.groups.push({name:v,codes:[],target:t,unit:u}); s.active=s.groups.length-1; remember("urun",v); save(); render();
