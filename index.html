@@ -418,7 +418,7 @@ button:disabled{opacity:.45}
     var im=document.createElement("button"); im.type="button"; im.textContent="Yedekten yükle"; im.onclick=function(){ $("restoreIn").value=""; $("restoreIn").click(); };
     b.appendChild(ex); b.appendChild(im); box.appendChild(b);
     var n=document.createElement("p"); n.className="note";
-    n.textContent=(D.lastBackup?"Son yedek: "+dmy(D.lastBackup)+". ":"Henüz yedek alınmadı. ")+"Yedek al → Dosyalar'a Kaydet → Drive → KK Okuyucu Yedek klasörü.";
+    n.textContent=(D.lastBackup?"Son yedek: "+dmy(D.lastBackup)+". ":"Henüz yedek alınmadı. ")+"Yedek al → Dosyalar'a Kaydet → Drive → KK_OKUYUCU klasörü.";
     box.appendChild(n);
     var o=document.createElement("p"); o.className="note"; o.id="offNote"; o.textContent=offText(); box.appendChild(o);
     var h2=document.createElement("p"); h2.className="sec"; h2.textContent="Ürün sözlüğü"; box.appendChild(h2);
@@ -673,7 +673,7 @@ button:disabled{opacity:.45}
     var file; try{ file=new File([data],name,{type:"application/json"}); }catch(e){}
     var done=function(){ D.lastBackup=Date.now(); save(); render(); toast("Yedek hazırlandı"); };
     if(file && navigator.canShare && navigator.canShare({files:[file]})){
-      navigator.share({files:[file],title:name}).then(done).catch(function(e){ if(e && e.name!=="AbortError") toast("Yedek paylaşılamadı"); });
+      navigator.share({files:[file]}).then(done).catch(function(e){ if(e && e.name!=="AbortError") toast("Yedek paylaşılamadı"); });
     }else{
       var a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([data],{type:"application/json"})); a.download=name;
       document.body.appendChild(a); a.click(); a.remove(); done();
