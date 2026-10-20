@@ -151,7 +151,12 @@ button:disabled{opacity:.45}
 #nameSheet .box{border-radius:0 0 16px 16px;padding-top:calc(16px + env(safe-area-inset-top,0px));padding-bottom:16px}
 .sug{display:flex;flex-direction:column;max-height:38vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px;margin-top:-4px}
 .sug button{text-align:left;font-weight:400;font-size:14px;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:10px 12px;background:var(--panel)}
-.sug button:last-child{border-bottom:0}
+.sug button:last-child,.sug .row:last-child button{border-bottom:0}
+.sug .srow{display:flex;border-bottom:1px solid var(--line)}
+.sug .srow:last-child{border-bottom:0}
+.sug .srow button{flex:1;border-bottom:0}
+.sug .srow button.del{flex:none;width:44px;color:var(--muted);font-size:18px;text-align:center;padding:0}
+.sug .tag{display:inline-block;font-size:11px;color:var(--warn);margin-left:6px;font-weight:400}
 .sug button b{font-weight:700}
 .sug button small{display:block;color:var(--muted);font-size:11.5px}
 #nameHint.ok{color:var(--ok)}
@@ -181,8 +186,9 @@ button:disabled{opacity:.45}
     <div class="scroll">
       <div>
         <p class="lbl">Bayi</p>
-        <input id="bayi" list="bayiList" placeholder="Bayi adı" style="width:100%" autocomplete="off">
-        <datalist id="bayiList"></datalist>
+        <input id="bayi" placeholder="Bayi adı yazın, örn. çelik" style="width:100%" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+        <div id="bayiHint" class="note"></div>
+        <div id="bayiSug" class="sug" hidden></div>
       </div>
       <div id="groups"></div>
       <div class="row"><button type="button" id="addGrpBtn" style="flex:1">+ Ürün ekle</button><button type="button" id="codesBtn" style="flex:1">Sadece kodları kopyala</button></div>
@@ -251,7 +257,6 @@ button:disabled{opacity:.45}
       <input id="targetIn" type="number" inputmode="numeric" min="0" placeholder="Hedef adet (isteğe bağlı)" enterkeyhint="done" style="flex:1">
       <select id="unitIn" aria-label="Birim"><option>çvl</option><option>koli</option><option>kutu</option><option>palet</option><option>adet</option></select>
     </div>
-    <datalist id="urunList"></datalist>
     <button class="primary" type="submit">Kaydet</button>
     <button type="button" id="nameNo">Vazgeç</button>
   </form>
@@ -264,6 +269,7 @@ button:disabled{opacity:.45}
   </div>
 </div>
 <input type="file" id="restoreIn" accept=".json,application/json" hidden>
+<input type="file" id="bayiIn" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden>
 <input type="file" id="dictIn" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
 <input type="file" id="impFile" accept=".xlsx,.xls,.txt,.csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
 <div class="sheet" id="impSheet" hidden>
@@ -317,12 +323,22 @@ button:disabled{opacity:.45}
   // Kodun "seri" kısmı: BKST kutu kodunda GTIN, GTS kodunda sondaki 6 haneden önceki kısım. SSCC koli/palet kontrol edilmez.
   // ---------- Ürün sözlüğü (GTIN → Mikro stok ismi / BKST adı) ----------
   var DICT_KEY="kk-urunler";
-  var G={loaded:false, v:"", byGtin:{}, byName:{}, names:[]};
+  var G={loaded:false, v:"", byGtin:{}, byName:{}, names:[], nameSet:{}};
+  // ---------- Bayi listesi (Mikro cari listesi) — sadece bu telefonda saklanır, GitHub'a konmaz ----------
+  var BAYI_KEY="kk-bayiler";
+  var B={names:[], set:{}, code:{}, v:"", count:0};
+  function setBayi(d){
+    var nm=[], st={}, cd={};
+    (d.items||[]).forEach(function(it){ var k=nkey(it.n); if(!k || st[k]) return; st[k]=1; nm.push(it.n); if(it.k) cd[k]=it.k; });
+    B={names:nm, set:st, code:cd, v:d.v||"", count:nm.length};
+  }
+  function loadBayi(){ try{ var d=JSON.parse(localStorage.getItem(BAYI_KEY)||"null"); if(d) setBayi(d); }catch(e){} }
   function setDict(d){
     var bg={}, bn={}, nm=[];
     (d.items||[]).forEach(function(it){ bg[it.g]=it; (it.m||[]).forEach(function(n){ bn[trUp(n)]=it.g; nm.push(n); }); if(it.b) bn[trUp(it.b)]=bn[trUp(it.b)]||it.g; });
     (d.names||[]).forEach(function(n){ nm.push(n); });
-    G={loaded:true, v:d.v||"", src:d.src||"", count:(d.items||[]).length, byGtin:bg, byName:bn, names:nm, raw:d};
+    var ns={}; nm.forEach(function(n){ ns[nkey(n)]=1; });
+    G={loaded:true, v:d.v||"", src:d.src||"", count:(d.items||[]).length, byGtin:bg, byName:bn, names:nm, nameSet:ns, raw:d};
   }
   function loadDict(){
     var local=null; try{ local=JSON.parse(localStorage.getItem(DICT_KEY)||"null"); }catch(e){}
@@ -415,10 +431,6 @@ button:disabled{opacity:.45}
     if(!s) return;
     $("shareBtn").disabled=$("copyBtn").disabled=!total(s);
     renderList(s); renderScan(s);
-    $("bayiList").innerHTML=""; D.names.bayi.forEach(function(v){ var o=document.createElement("option"); o.value=v; $("bayiList").appendChild(o); });
-    var ul=$("urunList"); if(ul.dataset.n!==String(D.names.urun.length+"/"+G.names.length)){ ul.innerHTML=""; var seen={};
-      D.names.urun.concat(G.names).forEach(function(v){ var k=trUp(v); if(seen[k]) return; seen[k]=1; var o=document.createElement("option"); o.value=v; ul.appendChild(o); });
-      ul.dataset.n=D.names.urun.length+"/"+G.names.length; }
   }
 
   function backupBox(box){
@@ -440,6 +452,13 @@ button:disabled{opacity:.45}
     db.appendChild(du); box.appendChild(db);
     var dn2=document.createElement("p"); dn2.className="note"; dn2.textContent="Mikro stok kartları (Stok kısa ismi + Stok ismi) veya BKST TAKİP stok (Ürün + Barkod) Excel'ini seçin.";
     box.appendChild(dn2);
+    var h3=document.createElement("p"); h3.className="sec"; h3.textContent="Bayi listesi"; box.appendChild(h3);
+    var bn=document.createElement("p"); bn.className="note";
+    bn.textContent = B.count ? B.count+" bayi tanımlı ("+B.v+"). Sadece bu telefonda saklanır." : "Henüz yüklenmedi. Mikro'dan cari listesini Excel olarak alıp seçin.";
+    box.appendChild(bn);
+    var bb=document.createElement("div"); bb.className="backup";
+    var bu=document.createElement("button"); bu.type="button"; bu.textContent="Bayi listesini güncelle"; bu.onclick=function(){ $("bayiIn").value=""; $("bayiIn").click(); };
+    bb.appendChild(bu); box.appendChild(bb);
   }
   var offReady=false;
   function offText(){ return (offReady ? "✓ İnternetsiz kullanıma hazır." : "İnternetsiz kullanım hazırlanıyor… (ilk açılışta internet gerekir)") + (navigator.onLine===false ? " · Şu an internet yok." : ""); }
@@ -865,6 +884,31 @@ function parseRows(rows){
     $("impSheet").hidden=true; save(); showTab("sv"); toast(n+" sevk hazırlandı / güncellendi");
   };
 
+  $("bayiIn").onchange=function(){
+    var f=this.files&&this.files[0]; if(!f) return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      loadXlsx().then(function(X){
+        var wb=X.read(new Uint8Array(rd.result),{type:"array"}), items=[], seen={};
+        wb.SheetNames.forEach(function(sn){
+          var rows=X.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:""}), hi=-1, cn=-1, ck=-1;
+          for(var i=0;i<Math.min(rows.length,10)&&hi<0;i++){ rows[i].forEach(function(v,j){ var u=trUp(v);
+            if(/^(CAR[İI] ?(HESAP)? ?(ADI|ÜNVANI|UNVANI|İSMİ|ISMI)|ÜNVAN|UNVAN|ÜNVANI|BAY[İI]( ADI)?|MÜŞTER[İI]( ADI)?|F[İI]RMA( ADI)?)$/.test(u)) cn=j;
+            else if(/^(CAR[İI] ?(HESAP)? ?KODU|KOD|KODU)$/.test(u)) ck=j; }); if(cn>=0) hi=i; }
+          if(hi<0) return;
+          for(var r=hi+1;r<rows.length;r++){
+            var n=String(rows[r][cn]||"").replace(/\s+/g," ").trim(), k=ck>=0?String(rows[r][ck]||"").trim():"";
+            if(!n || seen[nkey(n)]) continue; seen[nkey(n)]=1; items.push(k?{n:n,k:k}:{n:n});
+          }
+        });
+        if(!items.length){ toast("Dosyada 'Cari hesap adı' / 'Ünvan' sütunu bulunamadı"); return; }
+        var d=new Date(), data={v:p2(d.getDate())+"."+p2(d.getMonth()+1)+"."+d.getFullYear(), src:f.name, items:items};
+        try{ localStorage.setItem(BAYI_KEY, JSON.stringify(data)); }catch(e){ toast("Kaydedilemedi: telefon hafızası dolu olabilir"); return; }
+        setBayi(data); render(); toast("Bayi listesi yüklendi: "+items.length+" bayi");
+      }).catch(function(e){ toast("Dosya okunamadı: "+(e&&e.message||e)); });
+    };
+    rd.readAsArrayBuffer(f);
+  };
   $("dictIn").onchange=function(){
     var f=this.files&&this.files[0]; if(!f) return;
     var rd=new FileReader();
@@ -991,51 +1035,73 @@ function parseRows(rows){
   // daha önce kullanılan ürün seçilince birimini hatırla
   $("nameIn").addEventListener("change",function(){ var m=D.names.urunUnit&&D.names.urunUnit[this.value.trim().toLocaleUpperCase("tr")]; if(m) $("unitIn").value=m; });
   $("nameNo").onclick=function(){ $("nameSheet").hidden=true; nameCb=null; };
-  // ---- ürün adı önerileri (Mikro stok isimleri + daha önce kullanılanlar) ----
+  // ---- öneri listeleri (ürün: Mikro stok isimleri, bayi: Mikro cari listesi) + elle yazılanlar ----
   var FOLD={"Ç":"C","Ğ":"G","İ":"I","Ö":"O","Ş":"S","Ü":"U"};
   function fold(x){ return trUp(x).replace(/[ÇĞİÖŞÜ]/g,function(c){ return FOLD[c]; }); }
   function nkey(x){ return fold(x).replace(/[^0-9A-Z]/g,""); }
-  function sugList(q){
+  // kind: "urun" | "bayi"; sözlükte olmayan, elle yazılmış adlar silinebilir
+  function sugItems(kind,q){
     var toks=fold(q).split(/\s+/).map(function(t){ return t.replace(/[^0-9A-Z]/g,""); }).filter(Boolean);
     if(!toks.length) return [];
+    var known = kind==="urun" ? function(n){ return !!(G.byName[trUp(n)] || G.nameSet[nkey(n)]); } : function(n){ return !!B.set[nkey(n)]; };
+    var base = kind==="urun" ? G.names : B.names;
     var seen={}, out=[];
-    D.names.urun.concat(G.names).forEach(function(n,i){
+    D.names[kind].concat(base).forEach(function(n,i){
       var k=nkey(n); if(!k || seen[k]) return; seen[k]=1;
       if(!toks.every(function(t){ return k.indexOf(t)>=0; })) return;
-      var score=(k.indexOf(toks[0])===0?0:1)*1000 + (i<D.names.urun.length?0:500) + i;
-      out.push({n:n,s:score});
+      var recent=i<D.names[kind].length, manual=recent && !known(n);
+      out.push({n:n, manual:manual, s:(k.indexOf(toks[0])===0?0:1)*1000 + (recent?0:500) + i});
     });
     out.sort(function(a,b){ return a.s-b.s; });
-    return out.slice(0,12).map(function(o){ return o.n; });
+    return out.slice(0,12);
+  }
+  function forget(kind,n){ D.names[kind]=D.names[kind].filter(function(x){ return nkey(x)!==nkey(n); }); if(kind==="urun" && D.names.urunUnit) delete D.names.urunUnit[trUp(n)]; save(); }
+  function wireSug(kind,input,box,hintFn,onPick){
+    function show(){
+      var v=input.value, list=sugItems(kind,v);
+      box.innerHTML="";
+      if(!list.length || (list.length===1 && nkey(list[0].n)===nkey(v))){ box.hidden=true; hintFn(); return; }
+      list.forEach(function(it){
+        var row=document.createElement("div"); row.className="srow";
+        var b=document.createElement("button"); b.type="button";
+        var t=document.createElement("b"); t.textContent=it.n; b.appendChild(t);
+        if(it.manual){ var tg=document.createElement("span"); tg.className="tag"; tg.textContent="elle yazılmış"; b.appendChild(tg); }
+        if(kind==="urun"){ var gt=G.byName[trUp(it.n)]; if(gt){ var sm=document.createElement("small"); var bn=G.byGtin[gt]&&G.byGtin[gt].b; sm.textContent="GTIN "+gt.slice(-6)+(bn?" · "+bn:""); b.appendChild(sm); } }
+        else{ var bk=B.code[nkey(it.n)]; if(bk){ var sm2=document.createElement("small"); sm2.textContent=bk; b.appendChild(sm2); } }
+        // dokunmada klavye kapanıp liste kaybolmasın diye pointerdown ile seç
+        b.addEventListener("pointerdown",function(e){ e.preventDefault(); pickIt(it.n); });
+        b.onclick=function(){ pickIt(it.n); };
+        row.appendChild(b);
+        if(it.manual){
+          var d=document.createElement("button"); d.type="button"; d.className="del"; d.textContent="×"; d.setAttribute("aria-label","Önerilerden sil");
+          d.addEventListener("pointerdown",function(e){ e.preventDefault(); forget(kind,it.n); toast("Önerilerden silindi: "+it.n); show(); });
+          row.appendChild(d);
+        }
+        box.appendChild(row);
+      });
+      box.hidden=false; hintFn();
+    }
+    function pickIt(n){ input.value=n; box.hidden=true; hintFn(); onPick(n); }
+    input.addEventListener("input",show);
+    input.addEventListener("focus",show);
+    input.addEventListener("blur",function(){ setTimeout(function(){ box.hidden=true; },150); });
+    return show;
   }
   function nameState(){
     var v=$("nameIn").value.trim(), h=$("nameHint"), gt=G.byName[trUp(v)];
     if(!v){ h.textContent=""; h.className="note"; return; }
     if(gt){ h.textContent="✓ Mikro ürünü tanındı · GTIN "+gt.slice(-6)+" · okutmada ürün kontrolü yapılır"; h.className="note ok"; }
-    else{ h.textContent="Listede yok: ilaçsa aşağıdan seçin; gübre/diğer için böyle kalabilir."; h.className="note"; }
+    else if(G.nameSet[nkey(v)]){ h.textContent="✓ Mikro'da var (GTIN'siz ürün, ör. gübre)"; h.className="note ok"; }
+    else{ h.textContent="Mikro listesinde yok: ilaçsa aşağıdaki önerilerden seçin."; h.className="note"; }
   }
-  function showSug(){
-    var v=$("nameIn").value, box=$("nameSug"), list=sugList(v);
-    box.innerHTML="";
-    if(!list.length || (list.length===1 && trUp(list[0])===trUp(v))){ box.hidden=true; nameState(); return; }
-    list.forEach(function(n){
-      var b=document.createElement("button"); b.type="button";
-      var t=document.createElement("b"); t.textContent=n; b.appendChild(t);
-      var gt=G.byName[trUp(n)]; if(gt){ var sm=document.createElement("small"); var bn=G.byGtin[gt]&&G.byGtin[gt].b; sm.textContent="GTIN "+gt.slice(-6)+(bn?" · "+bn:""); b.appendChild(sm); }
-      // dokunmada klavye kapanıp liste kaybolmasın diye pointerdown ile seç
-      b.addEventListener("pointerdown",function(e){ e.preventDefault(); pick(n); });
-      b.onclick=function(){ pick(n); };
-      box.appendChild(b);
-    });
-    box.hidden=false; nameState();
+  function bayiState(){
+    var v=$("bayi").value.trim(), h=$("bayiHint");
+    if(!v || !B.names.length){ h.textContent= B.names.length||!v ? "" : "Bayi listesi yüklenmedi (Sevkler sayfası → Bayi listesini güncelle)."; h.className="note"; return; }
+    if(B.set[nkey(v)]){ h.textContent="✓ Mikro carisi"+(B.code[nkey(v)]?" · "+B.code[nkey(v)]:""); h.className="note ok"; }
+    else{ h.textContent="Bayi listesinde yok: önerilerden seçin ya da yeni bayi ise böyle bırakın."; h.className="note"; }
   }
-  function pick(n){
-    $("nameIn").value=n; $("nameSug").hidden=true;
-    var m=D.names.urunUnit&&D.names.urunUnit[trUp(n)]; if(m) $("unitIn").value=m;
-    nameState(); $("targetIn").focus();
-  }
-  $("nameIn").addEventListener("input",showSug);
-  $("nameIn").addEventListener("focus",showSug);
+  var showSug=wireSug("urun",$("nameIn"),$("nameSug"),nameState,function(n){ var m=D.names.urunUnit&&D.names.urunUnit[trUp(n)]; if(m) $("unitIn").value=m; $("targetIn").focus(); });
+  wireSug("bayi",$("bayi"),$("bayiSug"),bayiState,function(n){ var s=cur(); if(!s) return; s.bayi=n; remember("bayi",n); save(); render(); });
   function newGroup(){
     var s=cur(); if(!s) return;
     askName("Yeni ürün","",0,D.unit,function(v,t,u){ s.groups.push({name:v,codes:[],target:t,unit:u}); s.active=s.groups.length-1; remember("urun",v); save(); render();
@@ -1049,7 +1115,7 @@ function parseRows(rows){
   $("startBtn").onclick=start;
   $("undoBtn").onclick=undoLast;
   $("zoom").onclick=function(e){ var b=e.target.closest("button"); if(b) setZoom(+b.dataset.z); };
-  $("bayi").oninput=function(){ var s=cur(); if(!s) return; s.bayi=this.value; save(); $("preview").textContent=textOut(s)||"(henüz kod yok)"; };
+  $("bayi").oninput=function(){ var s=cur(); if(!s) return; s.bayi=this.value; save(); $("preview").textContent=textOut(s)||"(henüz kod yok)"; bayiState(); };
   $("bayi").onchange=function(){ var s=cur(); if(!s) return; remember("bayi",this.value); save(); render(); };
   $("addGrpBtn").onclick=newGroup;
   $("goScanBtn").onclick=function(){ showTab("scan"); };
@@ -1064,7 +1130,7 @@ function parseRows(rows){
   });
   setTimeout(function(){ try{ lib()&&lib().readBarcodes(new ImageData(8,8),{formats:["QRCode"]}).catch(function(){}); }catch(e){} },300);
 
-  load(); save(); loadDict(); render();
+  load(); save(); loadBayi(); loadDict(); render();
   if("serviceWorker" in navigator){
     navigator.serviceWorker.register("sw.js").then(function(){ return navigator.serviceWorker.ready; })
       .then(function(){ return caches.keys(); })
