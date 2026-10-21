@@ -270,7 +270,7 @@ button:disabled{opacity:.45}
 </div>
 <input type="file" id="restoreIn" accept=".json,application/json" hidden>
 <input type="file" id="bayiIn" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden>
-<input type="file" id="dictIn" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
+<input type="file" id="dictIn" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
 <input type="file" id="impFile" accept=".xlsx,.xls,.txt,.csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
 <div class="sheet" id="impSheet" hidden>
   <div class="box">
@@ -324,6 +324,10 @@ button:disabled{opacity:.45}
   // ---------- Ürün sözlüğü (GTIN → Mikro stok ismi / BKST adı) ----------
   var DICT_KEY="kk-urunler";
   var G={loaded:false, v:"", byGtin:{}, byName:{}, names:[], nameSet:{}};
+  // ---------- Koli/palet listesi (BKST TAKİP stoğundan: koli/palet etiketi → GTIN) — sadece bu telefonda ----------
+  var KOLI_KEY="kk-koliler";
+  var K={map:{}, v:"", koli:0, palet:0};
+  function loadKoli(){ try{ var d=JSON.parse(localStorage.getItem(KOLI_KEY)||"null"); if(d) K=d; }catch(e){} }
   // ---------- Bayi listesi (Mikro cari listesi) — sadece bu telefonda saklanır, GitHub'a konmaz ----------
   var BAYI_KEY="kk-bayiler";
   var B={names:[], set:{}, code:{}, v:"", count:0};
@@ -450,7 +454,10 @@ button:disabled{opacity:.45}
     var db=document.createElement("div"); db.className="backup";
     var du=document.createElement("button"); du.type="button"; du.textContent="Sözlüğü güncelle"; du.onclick=function(){ $("dictIn").value=""; $("dictIn").click(); };
     db.appendChild(du); box.appendChild(db);
-    var dn2=document.createElement("p"); dn2.className="note"; dn2.textContent="Mikro stok kartları (Stok kısa ismi + Stok ismi) veya BKST TAKİP stok (Ürün + Barkod) Excel'ini seçin.";
+    var dk=document.createElement("p"); dk.className="note";
+    dk.textContent = K.koli ? "Koli listesi: "+K.koli+" koli, "+K.palet+" palet ("+K.v+"). Koli/palet etiketleri de ürünle kontrol edilir." : "Koli listesi yüklenmedi: koli/palet etiketlerinde ürün kontrolü yapılamaz.";
+    box.appendChild(dk);
+    var dn2=document.createElement("p"); dn2.className="note"; dn2.textContent="Mikro stok kartları Excel'i, BKST TAKİP stok Excel'i veya BKST TAKİP koli listesi (Koli etiketi + Palet + Barkod) seçin.";
     box.appendChild(dn2);
     var h3=document.createElement("p"); h3.className="sec"; h3.textContent="Bayi listesi"; box.appendChild(h3);
     var bn=document.createElement("p"); bn.className="note";
@@ -621,7 +628,11 @@ button:disabled{opacity:.45}
     }
 
     // ürün kontrolü: kutu karekodundaki GTIN sözlükle karşılaştırılır
-    var info=gs1(raw), gt=info.gtin || (/^01\d{14}/.test(code)?code.substr(2,14):null), notes=[], switched=false, odd=false, ref=null;
+    var info=gs1(raw), gt=info.gtin || (/^01\d{14}/.test(code)?code.substr(2,14):null), notes=[], switched=false, odd=false, ref=null, viaKoli=false, kNotFound=false;
+    if(!gt && /^00\d{18}$/.test(code)){
+      if(K.map[code]){ gt=K.map[code]; viaKoli=true; }
+      else if(K.koli) kNotFound=true;
+    }
     var pn = gt ? prodName(gt) : null;
     if(gt){
       var mine=gGtin(g);
@@ -647,10 +658,12 @@ button:disabled{opacity:.45}
     var nm=g.name||"Ürün";
     if(switched) notes.unshift("→ "+nm+" ürününe eklendi");
     if(newSkt) notes.push("Farklı SKT: "+sktFmt(info.skt));
-    if(info.sscc && !gt) notes.push("Koli/palet kodu: ürün kontrolü yapılamaz");
+    if(viaKoli) notes.push("Koli/palet etiketi");
+    else if(kNotFound) notes.push("Bu koli/palet BKST stok listesinde yok ("+K.v+"): satılmış, yeni gelmiş ya da başka firmanın olabilir");
+    else if(info.sscc && !gt) notes.push("Koli/palet kodu: ürün kontrolü yapılamaz (koli listesi yüklenmedi)");
     var sub=code+(pn?" · "+pn:"")+(info.skt?" · SKT "+sktFmt(info.skt):""), tail=notes.length?" · "+notes.join(" · "):"";
     if(over){ beep("warn"); flash("warn"); setStatus("warn","Hedef aşıldı! "+nm+": "+g.codes.length+"/"+g.target+" "+un(s,g)+(odd?" · farklı seri":"")+tail, sub); }
-    else if(newSkt){ beep("warn"); flash("warn"); setStatus("warn",nm+": "+(g.target? g.codes.length+"/"+g.target+" "+un(s,g) : g.codes.length+". kod")+tail, sub); }
+    else if(newSkt || kNotFound){ beep("warn"); flash("warn"); setStatus("warn",nm+": "+(g.target? g.codes.length+"/"+g.target+" "+un(s,g) : g.codes.length+". kod")+tail, sub); }
     else if(g.target && g.codes.length===g.target && !odd){
       beep("done"); flash("ok");
       var nx=nextOpen(s), msg="Tamamlandı: "+nm+" "+g.codes.length+"/"+g.target+" "+un(s,g);
@@ -918,9 +931,23 @@ function parseRows(rows){
         var base=JSON.parse(JSON.stringify(G.raw||{items:[],names:[]})), im={}, addN=0, addG=0;
         (base.items||[]).forEach(function(it){ im[it.g]=it; });
         var nameSet={}; (base.names||[]).forEach(function(n){ nameSet[trUp(n)]=1; });
-        var resetM=false;
+        var resetM=false, km=null, kc=0, kp={};
         wb.SheetNames.forEach(function(sn){
           var rows=X.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:""}), hi=-1, cg=-1, cn=-1, kind="";
+          // BKST TAKİP koli listesi: Koli etiketi | Palet | Barkod (| Ürün | SKT)
+          for(var q=0;q<Math.min(rows.length,5);q++){
+            var hk=rows[q].map(function(v){ return fold(v); }), ik=hk.indexOf("KOLI ETIKETI"), ip=hk.indexOf("PALET"), ib=hk.indexOf("BARKOD");
+            if(ik>=0 && ib>=0){
+              km=km||{};
+              for(var rr=q+1; rr<rows.length; rr++){
+                var kk=String(rows[rr][ik]||"").replace(/\D/g,""), pp=ip>=0?String(rows[rr][ip]||"").replace(/\D/g,""):"", bb=("00000000000000"+String(rows[rr][ib]||"").replace(/\D/g,"")).slice(-14);
+                if(!/^\d{14}$/.test(bb) || bb==="00000000000000") continue;
+                if(kk.length===20 && !km[kk]){ km[kk]=bb; kc++; }
+                if(pp.length===20){ if(!kp[pp]) kp[pp]=bb; else if(kp[pp]!==bb) kp[pp]="*"; }
+              }
+              return;
+            }
+          }
           for(var i=0;i<Math.min(rows.length,10)&&hi<0;i++){ rows[i].forEach(function(v,j){ var u=trUp(v);
             if(/^STOK KISA [İI]SM[İI]$|^KISA [İI]S[İI]M$/.test(u)){ cg=j; kind="m"; }
             else if(/^STOK [İI]SM[İI]$/.test(u)) cn=j;
@@ -937,6 +964,12 @@ function parseRows(rows){
             }else if(!nameSet[trUp(n)]){ nameSet[trUp(n)]=1; (base.names=base.names||[]).push(n); addN++; }
           }
         });
+        if(km){
+          var pc=0; for(var pk in kp){ if(kp[pk]!=="*" && !km[pk]){ km[pk]=kp[pk]; pc++; } }
+          var dd=new Date(); K={map:km, v:p2(dd.getDate())+"."+p2(dd.getMonth()+1)+"."+dd.getFullYear(), koli:kc, palet:pc, src:f.name};
+          try{ localStorage.setItem(KOLI_KEY, JSON.stringify(K)); }catch(e){ toast("Kaydedilemedi: telefon hafızası dolu olabilir"); return; }
+          render(); toast("Koli listesi yüklendi: "+kc+" koli, "+pc+" palet"); return;
+        }
         if(resetM) base.items=base.items.filter(function(it){ return it.m.length || it.b; });
         if(!addG && !addN && !base.items.length){ toast("Dosyada Stok kısa ismi/Stok ismi veya Ürün/Barkod sütunu bulunamadı"); return; }
         var d=new Date(); base.v=d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate()); base.src=f.name;
@@ -1134,7 +1167,7 @@ function parseRows(rows){
   });
   setTimeout(function(){ try{ lib()&&lib().readBarcodes(new ImageData(8,8),{formats:["QRCode"]}).catch(function(){}); }catch(e){} },300);
 
-  load(); save(); loadBayi(); loadDict(); render();
+  load(); save(); loadBayi(); loadKoli(); loadDict(); render();
   if("serviceWorker" in navigator){
     navigator.serviceWorker.register("sw.js").then(function(){ return navigator.serviceWorker.ready; })
       .then(function(){ return caches.keys(); })
