@@ -326,7 +326,7 @@ button:disabled{opacity:.45}
 </script>
 <script>
 (function(){
-  var APPV="22.10.2026";   // uygulama sürümü (her yayında güncellenir)
+  var APPV="22.10.2026-2";   // uygulama sürümü (her yayında güncellenir)
   var KEY="kk-okuyucu-v3", V2KEY="kk-okuyucu-v2", V1KEY="kk-okuyucu-liste";
   var KEEP_SENT_MS=7*24*3600*1000;      // gönderilen sevkler 1 hafta saklanır
   var D={sevkler:[], cur:null, names:{bayi:[],urun:[]}, unit:"çvl"};
@@ -363,6 +363,18 @@ button:disabled{opacity:.45}
   var KOLI_KEY="kk-koliler";
   var K={map:{}, v:"", koli:0, palet:0};
   function loadKoli(){ try{ var d=JSON.parse(localStorage.getItem(KOLI_KEY)||"null"); if(d) K=d; }catch(e){} }
+  // ---------- GTS KK listesi (GTS TAKİP depo stoğu: KK → depo, ürün, lot, SKT, palet) — sadece bu telefonda ----------
+  var GTS_KEY="kk-gts";
+  var GT={count:0, ova:0, fet:0, at:0, src:"", names:[], kk:{}, pal:{}, alias:{}};
+  function setGts(d){
+    var pal={}, alias={};
+    d.names.forEach(function(pair,i){ pair.forEach(function(n){ if(n) alias[nkey(n)]=i; }); });
+    for(var k in d.kk){ var r=d.kk[k]; if(r[4]){ var p=pal[r[4]]||(pal[r[4]]={n:r[1],d:r[0],c:0}); p.c++; if(p.n!==r[1]) p.n=-1; } }
+    GT={count:d.count, ova:d.ova, fet:d.fet, at:d.at, src:d.src, names:d.names, kk:d.kk, pal:pal, alias:alias};
+  }
+  function loadGts(){ try{ var d=JSON.parse(localStorage.getItem(GTS_KEY)||"null"); if(d) setGts(d); }catch(e){} }
+  function gtsName(i){ var p=GT.names[i]; return p ? (p[1]||p[0]) : ""; }   // Mikro adı varsa o, yoksa GTS adı
+  function gKeyGts(g){ if(g.gtsKey!=null) return g.gtsKey; var a=GT.alias[nkey(g.name)]; return a==null?null:a; }
   // ---------- Bayi listesi (Mikro cari listesi) — sadece bu telefonda saklanır, GitHub'a konmaz ----------
   var BAYI_KEY="kk-bayiler";
   var B={names:[], set:{}, code:{}, v:"", count:0};
@@ -499,6 +511,12 @@ button:disabled{opacity:.45}
       [K.koli ? K.koli+" koli · "+K.palet+" palet" : "Yüklenmedi: koli/palet etiketlerinde ürün kontrolü yapılamaz",
        K.at ? "Güncellendi: "+dmyFull(K.at)+(K.src?" · "+K.src:"") : (K.v?"Güncellendi: "+K.v:""),
        "Kaynak: BKST TAKİP koli listesi · mal kabulden sonra yenileyin"], !!K.koli, "Güncelle", function(){ $("dictIn").value=""; $("dictIn").click(); }));
+    L.appendChild(setRow("GTS KK listesi",
+      [GT.count ? GT.count+" KK · OVA "+GT.ova+" · FET "+GT.fet : "Yüklenmedi: gübre KK'larında stok/ürün kontrolü yapılamaz",
+       GT.at ? "Güncellendi: "+dmyFull(GT.at)+(GT.src?" · "+GT.src:"") : "",
+       "Kaynak: GTS TAKİP · KK_GTS_Listesi.csv"], !!GT.count, "Güncelle", function(){ $("dictIn").value=""; $("dictIn").click(); }));
+    L.appendChild(setRow("Bu telefonun deposu: "+(D.depo||"FET"),
+      ["GTS kontrolünde başka depodaki KK'lar uyarılır"], false, (D.depo||"FET")==="FET"?"OVA yap":"FET yap", function(){ D.depo=(D.depo||"FET")==="FET"?"OVA":"FET"; save(); render(); toast("Depo: "+D.depo); }));
     var Y=sec("Yedek");
     Y.appendChild(setRow("Yedek al",
       [D.lastBackup ? "Son yedek: "+dmyFull(D.lastBackup) : "Henüz yedek alınmadı",
@@ -567,6 +585,7 @@ button:disabled{opacity:.45}
       var box=document.createElement("div"); box.className="grp"+(gi===s.active?" on":"");
       var h=document.createElement("div"); h.className="gh";
       var nm=document.createElement("span"); nm.className="nm"; nm.textContent=g.name||"Ürün adı yok";
+      var gk=gKeyGts(g); if(gk!=null && !gGtin(g)){ var bg=document.createElement("small"); bg.className="gt"; bg.textContent="✓ GTS ürünü"; nm.appendChild(bg); }
       var gg=gGtin(g); if(gg){ var bd=document.createElement("small"); bd.className="gt"; bd.textContent="✓ GTIN "+gg.slice(-6); bd.title=prodName(gg)||""; nm.appendChild(bd); }
       var ct=document.createElement("span"); ct.className="ct"; ct.textContent=cnt(g)+" "+un(s,g);
       var ed=ib("edit","Ürünü düzenle");
@@ -618,8 +637,8 @@ button:disabled{opacity:.45}
     var li=document.createElement("li"); if(hitCode && c.code===hitCode) li.className="hit";
     var n=document.createElement("span"); n.className="n"; n.textContent=(ci+1)+".";
     var v=document.createElement("span"); v.className="v"; v.textContent=c.code;
-    var sm=document.createElement("small"); sm.textContent=hhmm(c.time)+(c.dup?" · mükerrer":"")+(c.skt?" · SKT "+sktFmt(c.skt):"")+(c.odd?" · farklı seri":"")+(c.over?" · hedef fazlası":"");
-    if(c.odd||c.over) sm.className="w"; v.appendChild(sm);
+    var sm=document.createElement("small"); sm.textContent=hhmm(c.time)+(c.dup?" · mükerrer":"")+(c.skt?" · SKT "+sktFmt(c.skt):"")+(c.lot?" · Lot "+c.lot:"")+(c.odd?" · farklı seri":"")+(c.over?" · hedef fazlası":"")+(c.nogts?" · GTS'de yok":"")+(c.dep?" · "+c.dep+" stoğu":"");
+    if(c.odd||c.over||c.nogts||c.dep) sm.className="w"; v.appendChild(sm);
     var x=document.createElement("button"); x.type="button"; x.className="x"; x.setAttribute("aria-label","Sil"); x.textContent="×";
     x.onclick=function(){ ask((ci+1)+". kod silinsin mi?\n"+c.code,function(){ s.groups[gi].codes.splice(ci,1); save(); render(); },"Sil"); };
     var bt=document.createElement("span"); bt.className="rowbtns";
@@ -675,7 +694,7 @@ button:disabled{opacity:.45}
     }
 
     // ürün kontrolü: kutu karekodundaki GTIN sözlükle karşılaştırılır
-    var info=gs1(raw), gt=info.gtin || (/^01\d{14}/.test(code)?code.substr(2,14):null), notes=[], switched=false, odd=false, ref=null, viaKoli=false, kNotFound=false;
+    var info=gs1(raw), gt=info.gtin || (/^01\d{14}/.test(code)?code.substr(2,14):null), notes=[], switched=false, odd=false, ref=null, viaKoli=false, kNotFound=false, gtsInfo=null, gtsWarn=false, gtsMissing=false;
     if(!gt && /^00\d{18}$/.test(code)){
       if(K.map[code]){ gt=K.map[code]; viaKoli=true; }
       else if(K.koli) kNotFound=true;
@@ -693,6 +712,31 @@ button:disabled{opacity:.45}
           last={code:code,at:now}; return;
         }
       }
+    }else if(GT.count && !/^00\d{18}$/.test(code)){
+      // GTS KK kontrolü
+      var gr=GT.kk[code.toUpperCase()], gp=!gr && GT.pal[code.toUpperCase()];
+      var myDepo=D.depo||"FET";
+      if(gr || (gp && gp.n>=0)){
+        var ni2=gr?gr[1]:gp.n, depo=(gr?gr[0]:gp.d)?"OVA":"FET";
+        gtsInfo={name:gtsName(ni2), lot:gr?gr[2]:"", skt:gr?gr[3]:"", palet:!!gp, pc:gp?gp.c:0, depo:depo};
+        var mineG=gKeyGts(g);
+        if(mineG!==ni2){
+          var gix=-1; s.groups.forEach(function(gg,i){ if(gix<0 && gKeyGts(gg)===ni2) gix=i; });
+          if(gix>=0){ s.active=gix; g=s.groups[gix]; switched=true; }
+          else if(mineG==null && !g.codes.length && !G.byName[trUp(g.name)]){ g.gtsKey=ni2; notes.push("Tanındı: "+gtsInfo.name); }
+          else{
+            beep("dup"); flash("dup");
+            setStatus("dup","YANLIŞ ÜRÜN! Bu KK "+gtsInfo.name+" — bu sevkte yok. Eklenmedi.", code+(gtsInfo.lot?" · Lot "+gtsInfo.lot:""));
+            last={code:code,at:now}; return;
+          }
+        }
+        if(depo!==myDepo){ gtsWarn=true; notes.push("Bu KK "+depo+" stoğunda (bu telefon: "+myDepo+")"); }
+        if(gtsInfo.lot && g.codes.length && g.codes.some(function(c){return c.lot}) && !g.codes.some(function(c){return c.lot===gtsInfo.lot})){ gtsWarn=true; notes.push("Farklı lot: "+gtsInfo.lot); }
+        if(gtsInfo.palet) notes.push("Palet etiketi · "+gtsInfo.pc+" çuval");
+      }else{
+        gtsWarn=true; gtsMissing=true;
+        notes.push("GTS stoğunda yok ("+dmy(GT.at)+" listesi): bildirilmemiş, satılmış ya da yeni gelmiş olabilir");
+      }
     }else{
       var k=seriesKey(code);
       for(var i=0;i<g.codes.length && !ref;i++){ var rk=seriesKey(g.codes[i].code); if(rk && !g.codes[i].odd) ref=rk; }
@@ -701,6 +745,8 @@ button:disabled{opacity:.45}
     var over=!!(g.target && g.codes.length>=g.target);
     var newSkt = !!(info.skt && g.codes.length && g.codes.some(function(c){return c.skt}) && !g.codes.some(function(c){return c.skt===info.skt}));
     var rec={code:code,time:now}; if(odd) rec.odd=true; if(over) rec.over=true; if(info.skt) rec.skt=info.skt; if(gt) rec.gt=gt;
+    if(gtsInfo){ if(gtsInfo.lot) rec.lot=gtsInfo.lot; if(gtsInfo.depo!==(D.depo||"FET")) rec.dep=gtsInfo.depo; }
+    if(gtsMissing) rec.nogts=true;
     g.codes.push(rec); markStarted(s); lastAdd={sid:s.id, code:code};
     var nm=g.name||"Ürün";
     if(switched) notes.unshift("→ "+nm+" ürününe eklendi");
@@ -708,9 +754,9 @@ button:disabled{opacity:.45}
     if(viaKoli) notes.push("Koli/palet etiketi");
     else if(kNotFound) notes.push("Bu koli/palet BKST stok listesinde yok ("+K.v+"): satılmış, yeni gelmiş ya da başka firmanın olabilir");
     else if(info.sscc && !gt) notes.push("Koli/palet kodu: ürün kontrolü yapılamaz (koli listesi yüklenmedi)");
-    var sub=code+(pn?" · "+pn:"")+(info.skt?" · SKT "+sktFmt(info.skt):""), tail=notes.length?" · "+notes.join(" · "):"";
+    var sub=code+(pn?" · "+pn:"")+(info.skt?" · SKT "+sktFmt(info.skt):"")+(gtsInfo?" · "+gtsInfo.name+(gtsInfo.lot?" · Lot "+gtsInfo.lot:"")+(gtsInfo.skt?" · SKT "+gtsInfo.skt:""):""), tail=notes.length?" · "+notes.join(" · "):"";
     if(over){ beep("warn"); flash("warn"); setStatus("warn","Hedef aşıldı! "+nm+": "+g.codes.length+"/"+g.target+" "+un(s,g)+(odd?" · farklı seri":"")+tail, sub); }
-    else if(newSkt || kNotFound){ beep("warn"); flash("warn"); setStatus("warn",nm+": "+(g.target? g.codes.length+"/"+g.target+" "+un(s,g) : g.codes.length+". kod")+tail, sub); }
+    else if(newSkt || kNotFound || gtsWarn){ beep("warn"); flash("warn"); setStatus("warn",nm+": "+(g.target? g.codes.length+"/"+g.target+" "+un(s,g) : g.codes.length+". kod")+tail, sub); }
     else if(g.target && g.codes.length===g.target && !odd){
       beep("done"); flash("ok");
       var nx=nextOpen(s), msg="Tamamlandı: "+nm+" "+g.codes.length+"/"+g.target+" "+un(s,g);
@@ -978,9 +1024,25 @@ function parseRows(rows){
         var base=JSON.parse(JSON.stringify(G.raw||{items:[],names:[]})), im={}, addN=0, addG=0;
         (base.items||[]).forEach(function(it){ im[it.g]=it; });
         var nameSet={}; (base.names||[]).forEach(function(n){ nameSet[trUp(n)]=1; });
-        var resetM=false, km=null, kc=0, kp={};
+        var resetM=false, km=null, kc=0, kp={}, gts=null;
         wb.SheetNames.forEach(function(sn){
           var rows=X.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:""}), hi=-1, cg=-1, cn=-1, kind="";
+          // GTS TAKİP KK listesi
+          for(var g0=0; g0<Math.min(rows.length,5) && !gts; g0++){
+            var hg=rows[g0].map(function(v){ return fold(v); }), iK=hg.indexOf("KK"), iD=hg.indexOf("DEPO"), iG=hg.indexOf("GTS URUN ADI");
+            if(iK>=0 && iD>=0 && iG>=0){
+              var iM=hg.indexOf("MIKRO ADI"), iL=hg.indexOf("LOT"), iS=hg.indexOf("SKT"), iP=hg.indexOf("PALET");
+              gts={kk:{}, names:[], count:0, ova:0, fet:0}; var ni={};
+              for(var r2=g0+1; r2<rows.length; r2++){
+                var R0=rows[r2], kc2=String(R0[iK]||"").replace(/\s+/g,"").toUpperCase(); if(!kc2 || gts.kk[kc2]) continue;
+                var dep=fold(R0[iD]||"")==="OVA"?1:0, gn=String(R0[iG]||"").replace(/\s+/g," ").trim(), mn=iM>=0?String(R0[iM]||"").replace(/\s+/g," ").trim():"";
+                var key=gn+"|"+mn; if(ni[key]==null){ ni[key]=gts.names.length; gts.names.push([gn,mn]); }
+                gts.kk[kc2]=[dep, ni[key], iL>=0?String(R0[iL]||"").trim():"", iS>=0?String(R0[iS]||"").trim():"", iP>=0?String(R0[iP]||"").replace(/\s+/g,"").toUpperCase():""];
+                gts.count++; if(dep) gts.ova++; else gts.fet++;
+              }
+              return;
+            }
+          }
           // BKST TAKİP koli listesi: Koli etiketi | Palet | Barkod (| Ürün | SKT)
           for(var q=0;q<Math.min(rows.length,5);q++){
             var hk=rows[q].map(function(v){ return fold(v); }), ik=hk.indexOf("KOLI ETIKETI"), ip=hk.indexOf("PALET"), ib=hk.indexOf("BARKOD");
@@ -1011,6 +1073,11 @@ function parseRows(rows){
             }else if(!nameSet[trUp(n)]){ nameSet[trUp(n)]=1; (base.names=base.names||[]).push(n); addN++; }
           }
         });
+        if(gts){
+          gts.at=Date.now(); gts.src=f.name;
+          try{ localStorage.setItem(GTS_KEY, JSON.stringify(gts)); }catch(e){ toast("Kaydedilemedi: telefon hafızası dolu olabilir"); return; }
+          setGts(gts); render(); toast("GTS KK listesi yüklendi: "+gts.count+" KK (OVA "+gts.ova+", FET "+gts.fet+")"); return;
+        }
         if(km){
           var pc=0; for(var pk in kp){ if(kp[pk]!=="*" && !km[pk]){ km[pk]=kp[pk]; pc++; } }
           var dd=new Date(); K={map:km, v:p2(dd.getDate())+"."+p2(dd.getMonth()+1)+"."+dd.getFullYear(), koli:kc, palet:pc, src:f.name, at:Date.now()};
@@ -1175,6 +1242,7 @@ function parseRows(rows){
     var v=$("nameIn").value.trim(), h=$("nameHint"), gt=G.byName[trUp(v)];
     if(!v){ h.textContent=""; h.className="note"; return; }
     if(gt){ h.textContent="✓ Mikro ürünü tanındı · GTIN "+gt.slice(-6)+" · okutmada ürün kontrolü yapılır"; h.className="note ok"; }
+    else if(GT.alias[nkey(v)]!=null){ h.textContent="✓ GTS ürünü tanındı · okutmada KK kontrolü yapılır"; h.className="note ok"; }
     else if(G.nameSet[nkey(v)]){ h.textContent="✓ Mikro'da var (GTIN'siz ürün, ör. gübre)"; h.className="note ok"; }
     else{ h.textContent="Mikro listesinde yok: ilaçsa aşağıdaki önerilerden seçin."; h.className="note"; }
   }
@@ -1215,7 +1283,7 @@ function parseRows(rows){
   });
   setTimeout(function(){ try{ lib()&&lib().readBarcodes(new ImageData(8,8),{formats:["QRCode"]}).catch(function(){}); }catch(e){} },300);
 
-  load(); D.appSeen=D.appSeen||{}; if(!D.appSeen[APPV]) D.appSeen[APPV]=Date.now(); save(); loadBayi(); loadKoli(); loadDict(); render();
+  load(); loadGts(); D.appSeen=D.appSeen||{}; if(!D.appSeen[APPV]) D.appSeen[APPV]=Date.now(); save(); loadBayi(); loadKoli(); loadDict(); render();
   if("serviceWorker" in navigator){
     navigator.serviceWorker.register("sw.js").then(function(){ return navigator.serviceWorker.ready; })
       .then(function(){ return caches.keys(); })
