@@ -178,6 +178,8 @@ button:disabled{opacity:.45}
 .set .mt.ok{color:var(--ok)}
 .set button{flex:none;padding:8px 12px;font-size:14px}
 .setcol{display:flex;flex-direction:column;gap:8px}
+.fileIn{position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1}
+label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex:none;-webkit-user-select:none;user-select:none}
 #toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:20px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30}
 #toast.on{opacity:1}
 </style>
@@ -292,10 +294,11 @@ button:disabled{opacity:.45}
     <button type="button" id="moveNo">Vazgeç</button>
   </div>
 </div>
-<input type="file" id="restoreIn" accept=".json,application/json" hidden>
-<input type="file" id="bayiIn" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden>
-<input type="file" id="dictIn" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
-<input type="file" id="impFile" accept=".xlsx,.xls,.txt,.csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
+<!-- iPhone'da gizli (display:none) dosya kutusu kodla açılmayabiliyor; kutular görünmez ama sayfada duruyor, düğmeler <label> -->
+<input type="file" id="restoreIn" class="fileIn" tabindex="-1">
+<input type="file" id="bayiIn" class="fileIn" tabindex="-1">
+<input type="file" id="dictIn" class="fileIn" tabindex="-1">
+<input type="file" id="impFile" class="fileIn" tabindex="-1">
 <div class="sheet" id="impSheet" hidden>
   <div class="box">
     <div id="impStep1">
@@ -303,7 +306,7 @@ button:disabled{opacity:.45}
       <p class="note">WhatsApp'taki yükleme listesini kopyalayıp aşağıya yapıştırın ya da Excel/txt dosyası seçin (Mikro sevkiyat listesi veya BAYİ-ÜRÜN-ADET-KOLİ tablosu).</p>
       <textarea id="impText" placeholder="*BAYİ ADI*&#10;  ÜRÜN ADI (25 KG)  |  5adet&#10;  ÜRÜN ADI (1,000 L)  |  20adet - 1koli&#10;..."></textarea>
       <div class="row" style="margin-top:8px">
-        <button type="button" id="impPick" style="flex:1">Dosya seç</button>
+        <label class="btn" id="impPick" for="impFile" style="flex:1;padding:12px 14px;font-size:15px">Dosya seç</label>
         <button type="button" class="primary" id="impParse">Önizle</button>
       </div>
     </div>
@@ -326,7 +329,7 @@ button:disabled{opacity:.45}
 </script>
 <script>
 (function(){
-  var APPV="22.10.2026-2";   // uygulama sürümü (her yayında güncellenir)
+  var APPV="22.10.2026-3";   // uygulama sürümü (her yayında güncellenir)
   var KEY="kk-okuyucu-v3", V2KEY="kk-okuyucu-v2", V1KEY="kk-okuyucu-liste";
   var KEEP_SENT_MS=7*24*3600*1000;      // gönderilen sevkler 1 hafta saklanır
   var D={sevkler:[], cur:null, names:{bayi:[],urun:[]}, unit:"çvl"};
@@ -492,8 +495,15 @@ button:disabled{opacity:.45}
     var t=document.createElement("div"); t.className="tt"; t.textContent=title; tx.appendChild(t);
     (Array.isArray(meta)?meta:[meta]).forEach(function(m,i){ if(!m) return; var e=document.createElement("div"); e.className="mt"+(i===0&&metaOk?" ok":""); e.textContent=m; tx.appendChild(e); });
     r.appendChild(tx);
-    if(btnText){ var b=document.createElement("button"); b.type="button"; b.textContent=btnText; b.onclick=onBtn; r.appendChild(b); }
+    if(btnText && typeof onBtn==="string"){ r.appendChild(fileBtn(btnText,onBtn)); }
+    else if(btnText){ var b=document.createElement("button"); b.type="button"; b.textContent=btnText; b.onclick=onBtn; r.appendChild(b); }
     return r;
+  }
+  // dosya seçme düğmesi: <label for=…> — dokunuşu iPhone kendisi işler
+  function fileBtn(text,inputId){
+    var l=document.createElement("label"); l.className="btn"; l.htmlFor=inputId; l.textContent=text;
+    l.addEventListener("click",function(){ try{ $(inputId).value=""; }catch(e){} });
+    return l;
   }
   function renderSettings(){
     var box=$("setBox"); box.innerHTML="";
@@ -502,19 +512,19 @@ button:disabled{opacity:.45}
     L.appendChild(setRow("Ürün listesi",
       [G.loaded ? G.count+" ilaç (GTIN) · "+G.names.length+" ürün adı" : "Yükleniyor…",
        G.at ? "Güncellendi: "+dmyFull(G.at)+(G.src?" · "+G.src:"") : "Uygulamayla gelen liste ("+(G.v||"-").split("-").reverse().join(".")+")",
-       "Kaynak: Mikro stok kartları Excel'i"], !!G.loaded, "Güncelle", function(){ $("dictIn").value=""; $("dictIn").click(); }));
+       "Kaynak: Mikro stok kartları Excel'i"], !!G.loaded, "Güncelle", "dictIn"));
     L.appendChild(setRow("Bayi listesi",
       [B.count ? B.count+" bayi" : "Yüklenmedi",
        B.at ? "Güncellendi: "+dmyFull(B.at)+(B.src?" · "+B.src:"") : (B.v?"Güncellendi: "+B.v:""),
-       "Kaynak: Mikro cari listesi · sadece bu telefonda"], !!B.count, "Güncelle", function(){ $("bayiIn").value=""; $("bayiIn").click(); }));
+       "Kaynak: Mikro cari listesi · sadece bu telefonda"], !!B.count, "Güncelle", "bayiIn"));
     L.appendChild(setRow("Koli listesi",
       [K.koli ? K.koli+" koli · "+K.palet+" palet" : "Yüklenmedi: koli/palet etiketlerinde ürün kontrolü yapılamaz",
        K.at ? "Güncellendi: "+dmyFull(K.at)+(K.src?" · "+K.src:"") : (K.v?"Güncellendi: "+K.v:""),
-       "Kaynak: BKST TAKİP koli listesi · mal kabulden sonra yenileyin"], !!K.koli, "Güncelle", function(){ $("dictIn").value=""; $("dictIn").click(); }));
+       "Kaynak: BKST TAKİP koli listesi · mal kabulden sonra yenileyin"], !!K.koli, "Güncelle", "dictIn"));
     L.appendChild(setRow("GTS KK listesi",
       [GT.count ? GT.count+" KK · OVA "+GT.ova+" · FET "+GT.fet : "Yüklenmedi: gübre KK'larında stok/ürün kontrolü yapılamaz",
        GT.at ? "Güncellendi: "+dmyFull(GT.at)+(GT.src?" · "+GT.src:"") : "",
-       "Kaynak: GTS TAKİP · KK_GTS_Listesi.csv"], !!GT.count, "Güncelle", function(){ $("dictIn").value=""; $("dictIn").click(); }));
+       "Kaynak: GTS TAKİP · KK_GTS_Listesi.csv"], !!GT.count, "Güncelle", "dictIn"));
     L.appendChild(setRow("Bu telefonun deposu: "+(D.depo||"FET"),
       ["GTS kontrolünde başka depodaki KK'lar uyarılır"], false, (D.depo||"FET")==="FET"?"OVA yap":"FET yap", function(){ D.depo=(D.depo||"FET")==="FET"?"OVA":"FET"; save(); render(); toast("Depo: "+D.depo); }));
     var Y=sec("Yedek");
@@ -522,7 +532,7 @@ button:disabled{opacity:.45}
       [D.lastBackup ? "Son yedek: "+dmyFull(D.lastBackup) : "Henüz yedek alınmadı",
        "Dosyalar'a Kaydet → Drive → KK_OKUYUCU · telefon değiştirmeden önce alın"], !!D.lastBackup, "Yedek al", exportBackup));
     Y.appendChild(setRow("Yedekten yükle",
-      [D.lastRestore ? "Son yükleme: "+dmyFull(D.lastRestore) : "Eksik sevkler eklenir, mevcutlar değişmez"], false, "Yükle", function(){ $("restoreIn").value=""; $("restoreIn").click(); }));
+      [D.lastRestore ? "Son yükleme: "+dmyFull(D.lastRestore) : "Eksik sevkler eklenir, mevcutlar değişmez"], false, "Yükle", "restoreIn"));
     var U=sec("Uygulama");
     var seen=(D.appSeen&&D.appSeen[APPV])||null;
     U.appendChild(setRow("Sürüm "+APPV,
@@ -944,7 +954,7 @@ function parseRows(rows){
   $("impBtn").onclick=impOpen;
   $("impNo").onclick=function(){ $("impSheet").hidden=true; };
   $("impBack").onclick=function(){ $("impStep1").hidden=false; $("impStep2").hidden=true; };
-  $("impPick").onclick=function(){ $("impFile").value=""; $("impFile").click(); };
+  $("impPick").addEventListener("click",function(){ $("impFile").value=""; });
   $("impParse").onclick=function(){ var t=$("impText").value; if(!t.trim()){ toast("Önce listeyi yapıştırın"); return; } impShow(parseText(t),"Yapıştırılan liste"); };
   $("impFile").onchange=function(){
     var f=this.files&&this.files[0]; if(!f) return;

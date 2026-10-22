@@ -1,5 +1,5 @@
 // KK Okuyucu çevrimdışı önbelleği. Yeni sürüm yayınlarken VERSION'ı artırın.
-const VERSION = "kk-v9";
+const VERSION = "kk-v10";
 const FILES = ["./", "./index.html", "./zxing-reader.js", "./zxing_reader.wasm", "./manifest.json", "./icon-180.png", "./icon-512.png", "./xlsx.mini.min.js", "./urunler.json"];
 
 self.addEventListener("install", e => {
