@@ -306,6 +306,7 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
       <p class="note">WhatsApp'taki yükleme listesini kopyalayıp aşağıya yapıştırın ya da Excel/txt dosyası seçin (Mikro sevkiyat listesi veya BAYİ-ÜRÜN-ADET-KOLİ tablosu).</p>
       <textarea id="impText" placeholder="*BAYİ ADI*&#10;  ÜRÜN ADI (25 KG)  |  5adet&#10;  ÜRÜN ADI (1,000 L)  |  20adet - 1koli&#10;..."></textarea>
       <div class="row" style="margin-top:8px">
+        <button type="button" id="impDrive" style="flex:1;padding:12px 14px;font-size:15px" hidden>Drive'dan al</button>
         <label class="btn" id="impPick" for="impFile" style="flex:1;padding:12px 14px;font-size:15px">Dosya seç</label>
         <button type="button" class="primary" id="impParse">Önizle</button>
       </div>
@@ -329,7 +330,7 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
 </script>
 <script>
 (function(){
-  var APPV="22.10.2026-3";   // uygulama sürümü (her yayında güncellenir)
+  var APPV="22.10.2026-4";   // uygulama sürümü (her yayında güncellenir)
   var KEY="kk-okuyucu-v3", V2KEY="kk-okuyucu-v2", V1KEY="kk-okuyucu-liste";
   var KEEP_SENT_MS=7*24*3600*1000;      // gönderilen sevkler 1 hafta saklanır
   var D={sevkler:[], cur:null, names:{bayi:[],urun:[]}, unit:"çvl"};
@@ -495,7 +496,12 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
     var t=document.createElement("div"); t.className="tt"; t.textContent=title; tx.appendChild(t);
     (Array.isArray(meta)?meta:[meta]).forEach(function(m,i){ if(!m) return; var e=document.createElement("div"); e.className="mt"+(i===0&&metaOk?" ok":""); e.textContent=m; tx.appendChild(e); });
     r.appendChild(tx);
-    if(btnText && typeof onBtn==="string"){ r.appendChild(fileBtn(btnText,onBtn)); }
+    // Drive bağlıysa "Drive'dan" düğmesi öne gelir; dosya seçici yedek olarak kalır
+    if(btnText && typeof onBtn==="string" && drvOn() && DRV_PAT[onBtn+":"+title]){
+      var p=DRV_PAT[onBtn+":"+title], db=document.createElement("button"); db.type="button"; db.className="primary"; db.textContent="Drive'dan";
+      db.onclick=function(){ drvPull(p,onBtn,title); }; r.appendChild(db); r.appendChild(fileBtn("Dosya",onBtn));
+    }
+    else if(btnText && typeof onBtn==="string"){ r.appendChild(fileBtn(btnText,onBtn)); }
     else if(btnText){ var b=document.createElement("button"); b.type="button"; b.textContent=btnText; b.onclick=onBtn; r.appendChild(b); }
     return r;
   }
@@ -508,6 +514,10 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
   function renderSettings(){
     var box=$("setBox"); box.innerHTML="";
     var sec=function(t){ var h=document.createElement("p"); h.className="sec"; h.textContent=t; box.appendChild(h); var c=document.createElement("div"); c.className="setcol"; box.appendChild(c); return c; };
+    var Dr=sec("Drive");
+    Dr.appendChild(setRow("Drive bağlantısı",
+      [drvOn() ? "Bağlı: KK_OKUYUCU klasörü"+(D.driveOk?" · son kontrol "+dmyFull(D.driveOk):"") : "Bağlı değil: dosyalar telefonun dosya seçicisinden alınır",
+       "Bağlıyken listeler ve yedek doğrudan Drive'daki en yeni dosyadan gelir"], drvOn(), drvOn()?"Değiştir":"Anahtar gir", drvSetKey));
     var L=sec("Listeler");
     L.appendChild(setRow("Ürün listesi",
       [G.loaded ? G.count+" ilaç (GTIN) · "+G.names.length+" ürün adı" : "Yükleniyor…",
@@ -530,7 +540,7 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
     var Y=sec("Yedek");
     Y.appendChild(setRow("Yedek al",
       [D.lastBackup ? "Son yedek: "+dmyFull(D.lastBackup) : "Henüz yedek alınmadı",
-       "Dosyalar'a Kaydet → Drive → KK_OKUYUCU · telefon değiştirmeden önce alın"], !!D.lastBackup, "Yedek al", exportBackup));
+       drvOn() ? "Doğrudan Drive → KK_OKUYUCU klasörüne kaydedilir" : "Dosyalar'a Kaydet → Drive → KK_OKUYUCU · telefon değiştirmeden önce alın"], !!D.lastBackup, "Yedek al", exportBackup));
     Y.appendChild(setRow("Yedekten yükle",
       [D.lastRestore ? "Son yükleme: "+dmyFull(D.lastRestore) : "Eksik sevkler eklenir, mevcutlar değişmez"], false, "Yükle", "restoreIn"));
     var U=sec("Uygulama");
@@ -813,16 +823,74 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
   // ---------- Yedek ----------
   function stamp(){ var d=new Date(); return d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+"-"+p2(d.getHours())+p2(d.getMinutes()); }
   function exportBackup(){
-    var data=JSON.stringify({app:"kk-okuyucu",version:3,at:Date.now(),data:D});
+    var dd={}; for(var k in D) if(k!=="driveKey") dd[k]=D[k];
+    var data=JSON.stringify({app:"kk-okuyucu",version:3,at:Date.now(),data:dd});
     var name="KK-Okuyucu-yedek-"+stamp()+".json";
     var file; try{ file=new File([data],name,{type:"application/json"}); }catch(e){}
     var done=function(){ D.lastBackup=Date.now(); save(); render(); toast("Yedek hazırlandı"); };
+    if(drvOn()){
+      toast("Yedek Drive'a kaydediliyor…");
+      drvCall({method:"POST", body:JSON.stringify({key:D.driveKey, op:"save", name:name, content:data})}).then(function(){
+        D.lastBackup=Date.now(); save(); render(); toast("Yedek Drive'a kaydedildi: KK_OKUYUCU/"+name);
+      }).catch(function(e){ toast("Drive'a kaydedilemedi ("+e.message+"). Dosya olarak paylaşılıyor."); shareIt(); });
+      return;
+    }
+    shareIt();
+    function shareIt(){
     if(file && navigator.canShare && navigator.canShare({files:[file]})){
       navigator.share({files:[file]}).then(done).catch(function(e){ if(e && e.name!=="AbortError") toast("Yedek paylaşılamadı"); });
     }else{
       var a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([data],{type:"application/json"})); a.download=name;
       document.body.appendChild(a); a.click(); a.remove(); done();
     }
+    }
+  }
+
+  // ---------- Drive köprüsü (Apps Script): KK_OKUYUCU klasöründeki en yeni dosyayı doğrudan alır ----------
+  var DRV_URL="https://script.google.com/macros/s/AKfycbw2DXr8CMU1V5Xc44ezGkzs2FOCC1aOV8gGqYDH4-czZvI0t-gxZtYodT-41gCKmfB-/exec";
+  var DRV_PAT={
+    "dictIn:Ürün listesi": /stok\s*kart/i,
+    "bayiIn:Bayi listesi": /cari/i,
+    "dictIn:Koli listesi": /^KK_Koli_Listesi/i,
+    "dictIn:GTS KK listesi": /^KK_GTS_Listesi/i,
+    "restoreIn:Yedekten yükle": /yedek.*\.json$/i
+  };
+  function drvOn(){ return !!(D.driveKey && DRV_URL.indexOf("https://")===0); }
+  function drvCall(opt, qs){
+    if(!navigator.onLine) return Promise.reject(new Error("internet yok"));
+    var ctl=window.AbortController?new AbortController():null, tm=setTimeout(function(){ if(ctl) ctl.abort(); },45000);
+    var o=opt||{}; if(ctl) o.signal=ctl.signal; o.redirect="follow";
+    return fetch(DRV_URL+(qs?"?"+qs:""), o).then(function(r){ return r.json(); }).then(function(j){
+      clearTimeout(tm);
+      if(!j || !j.ok) throw new Error(j&&j.error==="yetki" ? "anahtar yanlış" : (j&&j.error)||"cevap yok");
+      return j;
+    },function(e){ clearTimeout(tm); throw new Error(e&&e.name==="AbortError"?"zaman aşımı":"bağlanılamadı"); });
+  }
+  function drvList(){ return drvCall(null,"key="+encodeURIComponent(D.driveKey)+"&op=list"); }
+  function b64File(j){
+    var bin=atob(j.b64), u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+    var type=/\.json$/i.test(j.name)?"application/json":(/\.(csv|txt)$/i.test(j.name)?"text/plain":"application/octet-stream");
+    try{ return new File([u],j.name,{type:type,lastModified:j.modified}); }catch(e){ var b=new Blob([u],{type:type}); b.name=j.name; return b; }
+  }
+  function drvPull(pat, inputId, label){
+    toast(label+": Drive'a bakılıyor…");
+    drvList().then(function(j){
+      var f=(j.files||[]).filter(function(x){ return pat.test(x.name); })[0];   // liste en yeniden eskiye sıralı
+      if(!f) throw new Error("KK_OKUYUCU klasöründe uygun dosya yok");
+      toast(f.name+" ("+dmyFull(f.modified)+") alınıyor…");
+      return drvCall(null,"key="+encodeURIComponent(D.driveKey)+"&op=get&id="+encodeURIComponent(f.id));
+    }).then(function(g){
+      $(inputId).onchange.call({files:[b64File(g)]});
+    }).catch(function(e){ toast(label+": "+e.message); });
+  }
+  function drvSetKey(){
+    var k=window.prompt("Drive köprüsü anahtarı (boş bırakırsanız bağlantı kaldırılır):", D.driveKey||"");
+    if(k===null) return;
+    k=k.trim(); D.driveKey=k||""; save();
+    if(!k){ render(); toast("Drive bağlantısı kaldırıldı"); return; }
+    toast("Drive kontrol ediliyor…");
+    drvList().then(function(j){ D.driveOk=Date.now(); save(); render(); toast("Drive bağlandı: "+j.files.length+" dosya görünüyor"); })
+      .catch(function(e){ render(); toast("Drive: "+e.message); });
   }
   $("restoreIn").onchange=function(){
     var f=this.files&&this.files[0]; if(!f) return;
@@ -950,7 +1018,8 @@ function parseRows(rows){
     $("impStep1").hidden=true; $("impStep2").hidden=false; updImp();
   }
   function updImp(){ var n=impData.filter(function(b){return b.on}).length; $("impDo").textContent=n? "Aktar ("+n+" sevk)" : "Bayi seçin"; $("impDo").disabled=!n; }
-  function impOpen(){ $("impText").value=""; $("impStep1").hidden=false; $("impStep2").hidden=true; $("impSheet").hidden=false; }
+  $("impDrive").onclick=function(){ drvPull(/sevk/i,"impFile","Sevk listesi"); };
+  function impOpen(){ $("impDrive").hidden=!drvOn(); $("impText").value=""; $("impStep1").hidden=false; $("impStep2").hidden=true; $("impSheet").hidden=false; }
   $("impBtn").onclick=impOpen;
   $("impNo").onclick=function(){ $("impSheet").hidden=true; };
   $("impBack").onclick=function(){ $("impStep1").hidden=false; $("impStep2").hidden=true; };
