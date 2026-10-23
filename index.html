@@ -330,7 +330,7 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
 </script>
 <script>
 (function(){
-  var APPV="22.10.2026-4";   // uygulama sürümü (her yayında güncellenir)
+  var APPV="23.10.2026-1";   // uygulama sürümü (her yayında güncellenir)
   var KEY="kk-okuyucu-v3", V2KEY="kk-okuyucu-v2", V1KEY="kk-okuyucu-liste";
   var KEEP_SENT_MS=7*24*3600*1000;      // gönderilen sevkler 1 hafta saklanır
   var D={sevkler:[], cur:null, names:{bayi:[],urun:[]}, unit:"çvl"};
@@ -446,9 +446,22 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
       }
     }catch(e){}
     var now=Date.now();
-    D.sevkler=D.sevkler.filter(function(s){ return !(s.status==="gonderildi" && s.sentAt && now-s.sentAt>KEEP_SENT_MS); });
+    loadArc();
+    D.sevkler=D.sevkler.filter(function(s){ var old=s.status==="gonderildi" && s.sentAt && now-s.sentAt>KEEP_SENT_MS; if(old) arcAdd(s); return !old; });
+    arcPrune(); saveArc();
     if(!cur()) D.cur=null;
   }
+  // ---------- Gönderilmiş kod arşivi: 1 haftası dolup silinen sevklerin kodları 1 yıl tekrar kontrolünde kalır ----------
+  var ARC_KEY="kk-arsiv", ARC_MS=365*24*3600*1000, A={b:[],e:{}};
+  function loadArc(){ try{ var a=JSON.parse(localStorage.getItem(ARC_KEY)||"null"); if(a&&a.e) A=a; }catch(e){} }
+  function saveArc(){ try{ localStorage.setItem(ARC_KEY, JSON.stringify(A)); }catch(e){} }
+  function arcAdd(sv){
+    var bi=A.b.indexOf(sv.bayi||""); if(bi<0){ bi=A.b.length; A.b.push(sv.bayi||""); }
+    var day=Math.floor((sv.sentAt||Date.now())/864e5);
+    sv.groups.forEach(function(g){ g.codes.forEach(function(c){ if(!A.e[c.code]) A.e[c.code]=[bi,day,g.name||""]; }); });
+  }
+  function arcPrune(){ var lim=Math.floor((Date.now()-ARC_MS)/864e5); for(var k in A.e) if(A.e[k][1]<lim) delete A.e[k]; }
+  function arcCount(){ return Object.keys(A.e).length; }
   function save(){ var s=cur(); if(s) s.updated=Date.now(); try{ localStorage.setItem(KEY, JSON.stringify(D)); }catch(e){ toast("Kaydedilemedi: telefon hafızası dolu olabilir"); } }
   function remember(kind,val){
     val=(val||"").trim(); if(!val) return;
@@ -517,7 +530,7 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
     var Dr=sec("Drive");
     Dr.appendChild(setRow("Drive bağlantısı",
       [drvOn() ? "Bağlı: KK_OKUYUCU klasörü"+(D.driveOk?" · son kontrol "+dmyFull(D.driveOk):"") : "Bağlı değil: dosyalar telefonun dosya seçicisinden alınır",
-       "Bağlıyken listeler ve yedek doğrudan Drive'daki en yeni dosyadan gelir"], drvOn(), drvOn()?"Değiştir":"Anahtar gir", drvSetKey));
+       drvOn() ? "Yeni liste varsa açılışta kendiliğinden alınır · gönderimden sonra otomatik yedek" : "Bağlıyken listeler ve yedek doğrudan Drive'daki en yeni dosyadan gelir"], drvOn(), drvOn()?"Değiştir":"Anahtar gir", drvSetKey));
     var L=sec("Listeler");
     L.appendChild(setRow("Ürün listesi",
       [G.loaded ? G.count+" ilaç (GTIN) · "+G.names.length+" ürün adı" : "Yükleniyor…",
@@ -539,10 +552,12 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
       ["GTS kontrolünde başka depodaki KK'lar uyarılır"], false, (D.depo||"FET")==="FET"?"OVA yap":"FET yap", function(){ D.depo=(D.depo||"FET")==="FET"?"OVA":"FET"; save(); render(); toast("Depo: "+D.depo); }));
     var Y=sec("Yedek");
     Y.appendChild(setRow("Yedek al",
-      [D.lastBackup ? "Son yedek: "+dmyFull(D.lastBackup) : "Henüz yedek alınmadı",
+      [D.lastBackup ? "Son yedek: "+dmyFull(D.lastBackup)+(D.backupPending&&drvOn()?" · yeni yedek internet bekliyor":"") : "Henüz yedek alınmadı",
        drvOn() ? "Doğrudan Drive → KK_OKUYUCU klasörüne kaydedilir" : "Dosyalar'a Kaydet → Drive → KK_OKUYUCU · telefon değiştirmeden önce alın"], !!D.lastBackup, "Yedek al", exportBackup));
     Y.appendChild(setRow("Yedekten yükle",
       [D.lastRestore ? "Son yükleme: "+dmyFull(D.lastRestore) : "Eksik sevkler eklenir, mevcutlar değişmez"], false, "Yükle", "restoreIn"));
+    Y.appendChild(setRow("Gönderilmiş kod arşivi",
+      [arcCount()+" kod · son 1 yıl", "1 haftası dolan sevklerin kodları burada kalır; tekrar okutulursa uyarır"], false, null, null));
     var U=sec("Uygulama");
     var seen=(D.appSeen&&D.appSeen[APPV])||null;
     U.appendChild(setRow("Sürüm "+APPV,
@@ -693,7 +708,7 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
   }
 
   // ---------- Kod ekleme ----------
-  function add(raw,manual){
+  function add(raw,manual,force){
     var s=cur(); var code=clean(raw); if(!code || !s) return;
     var now=Date.now();
     if(!manual && code===last.code && now-last.at<3000){ last.at=now; return; } // çerçevede duran kodu tekrar sayma
@@ -710,6 +725,15 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
                              : "Başka sevkte var: "+(hit.sv.bayi||"Bayi adı yok")+" · "+(hit.g.name||"Ürün")+" ("+STATUS[hit.sv.status]+")";
       setStatus("dup","MÜKERRER! "+where, code);
       hitCode=code; save(); render(); hitCode=null;
+      return;
+    }
+
+    var ar=A.e[code];
+    if(ar && !force){
+      beep("dup"); flash("dup");
+      var ad=new Date(ar[1]*864e5), at=p2(ad.getDate())+"."+p2(ad.getMonth()+1)+"."+ad.getFullYear();
+      setStatus("dup","DAHA ÖNCE GÖNDERİLDİ! "+(A.b[ar[0]]||"Bayi adı yok")+" · "+(ar[2]||"Ürün")+" ("+at+")", code+" · eklenmedi");
+      ask("Bu kod "+at+" tarihinde "+(A.b[ar[0]]||"bir bayiye")+" gönderilmiş.\n"+code+"\n\nİade gelip yeniden gidiyorsa ekleyebilirsiniz.", function(){ delete A.e[code]; saveArc(); add(raw,true,true); }, "Yine de ekle");
       return;
     }
 
@@ -823,7 +847,7 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
   // ---------- Yedek ----------
   function stamp(){ var d=new Date(); return d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+"-"+p2(d.getHours())+p2(d.getMinutes()); }
   function exportBackup(){
-    var dd={}; for(var k in D) if(k!=="driveKey") dd[k]=D[k];
+    var dd={}; for(var k in D) if(k!=="driveKey") dd[k]=D[k]; dd.arsiv=A;
     var data=JSON.stringify({app:"kk-okuyucu",version:3,at:Date.now(),data:dd});
     var name="KK-Okuyucu-yedek-"+stamp()+".json";
     var file; try{ file=new File([data],name,{type:"application/json"}); }catch(e){}
@@ -883,6 +907,39 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
       $(inputId).onchange.call({files:[b64File(g)]});
     }).catch(function(e){ toast(label+": "+e.message); });
   }
+  // sessiz yedek: gönderimden sonra; internet yoksa bekler, bağlantı gelince alınır
+  var bkBusy=false;
+  function autoBackup(){
+    if(!D.backupPending || !drvOn() || bkBusy || navigator.onLine===false) return;
+    bkBusy=true;
+    var dd={}; for(var k in D) if(k!=="driveKey") dd[k]=D[k]; dd.arsiv=A;
+    var name="KK-Okuyucu-yedek-"+stamp()+".json";
+    drvCall({method:"POST", body:JSON.stringify({key:D.driveKey, op:"save", name:name, keep:10, content:JSON.stringify({app:"kk-okuyucu",version:3,at:Date.now(),auto:true,data:dd})})})
+      .then(function(){ D.backupPending=false; D.lastBackup=Date.now(); D.lastAutoBackup=Date.now(); save(); if(tab==="set") render(); })
+      .catch(function(){}).then(function(){ bkBusy=false; });
+  }
+  // açılışta / internet gelince: KK_OKUYUCU'da telefondakinden yeni liste varsa kendiliğinden alır
+  var AUTO=[["dictIn",/^KK_Koli_Listesi/i,function(){return K.at},"Koli listesi"],["dictIn",/^KK_GTS_Listesi/i,function(){return GT.at},"GTS listesi"],
+            ["dictIn",/stok\s*kart/i,function(){return G.at},"Ürün listesi"],["bayiIn",/cari/i,function(){return B.at},"Bayi listesi"]];
+  var autoBusy=false;
+  function drvAuto(force){
+    if(!drvOn() || autoBusy || navigator.onLine===false) return;
+    if(!force && D.driveChk && Date.now()-D.driveChk<10*60*1000) return;
+    autoBusy=true;
+    drvList().then(function(j){
+      D.driveChk=Date.now(); D.driveOk=Date.now(); save();
+      var todo=[];
+      AUTO.forEach(function(a){ var f=(j.files||[]).filter(function(x){ return a[1].test(x.name); })[0]; if(f && f.modified>(a[2]()||0)) todo.push([a,f]); });
+      var step=function(i){
+        if(i>=todo.length){ autoBusy=false; if(todo.length && tab==="set") render(); return; }
+        var a=todo[i][0], f=todo[i][1];
+        drvCall(null,"key="+encodeURIComponent(D.driveKey)+"&op=get&id="+encodeURIComponent(f.id))
+          .then(function(g){ $(a[0]).onchange.call({files:[b64File(g)]}); toast(a[3]+" Drive'dan yenilendi"); })
+          .catch(function(){}).then(function(){ setTimeout(function(){ step(i+1); },2500); });
+      };
+      step(0);
+    }).catch(function(){ autoBusy=false; });
+  }
   function drvSetKey(){
     var k=window.prompt("Drive köprüsü anahtarı (boş bırakırsanız bağlantı kaldırılır):", D.driveKey||"");
     if(k===null) return;
@@ -903,6 +960,7 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
         var add=b.sevkler.filter(function(x){ return !have[x.id]; });
         ask("Yedek: "+dmy(o.at)+"\n"+b.sevkler.length+" sevk içeriyor, "+add.length+" tanesi bu telefonda yok.\nEksik sevkler eklensin mi? Mevcut sevkler değişmez.", function(){
           D.sevkler=D.sevkler.concat(add); D.lastRestore=Date.now();
+          if(b.arsiv && b.arsiv.e){ for(var c in b.arsiv.e){ if(!A.e[c]){ var e0=b.arsiv.e[c], nm=b.arsiv.b[e0[0]]||"", bi=A.b.indexOf(nm); if(bi<0){ bi=A.b.length; A.b.push(nm); } A.e[c]=[bi,e0[1],e0[2]]; } } saveArc(); }
           ["bayi","urun"].forEach(function(k){ (b.names&&b.names[k]||[]).slice().reverse().forEach(function(v){ if(D.names[k].indexOf(v)<0) D.names[k].push(v); }); });
           if(b.names && b.names.urunUnit){ D.names.urunUnit=D.names.urunUnit||{}; for(var k in b.names.urunUnit) if(!D.names.urunUnit[k]) D.names.urunUnit[k]=b.names.urunUnit[k]; }
           save(); render(); toast(add.length+" sevk eklendi");
@@ -1186,8 +1244,16 @@ function parseRows(rows){
     try{ document.execCommand("copy"); toast("Kopyalandı"); }catch(e){ toast("Kopyalanamadı"); }
     ta.remove();
   }
-  function markSent(s){ s.status="gonderildi"; s.sentAt=Date.now(); save(); render(); toast("Gönderildi olarak işaretlendi"); }
+  function markSent(s){ s.status="gonderildi"; s.sentAt=Date.now(); D.backupPending=true; save(); render(); toast("Gönderildi olarak işaretlendi"); setTimeout(autoBackup,1500); }
   function shareSevk(s){
+    var miss=s.groups.filter(function(g){ return g.target ? g.codes.length<g.target : !g.codes.length; });
+    if(miss.length){
+      ask("Eksik kalemler var:\n"+miss.map(function(g){ return "• "+(g.name||"Ürün")+": "+(g.target? g.codes.length+"/"+g.target+" "+un(s,g)+" (eksik "+(g.target-g.codes.length)+")" : "hiç okutulmadı"); }).join("\n")+"\n\nYine de gönderilsin mi?", function(){ doShare(s); }, "Gönder");
+      return;
+    }
+    doShare(s);
+  }
+  function doShare(s){
     var txt=textOut(s); remember("bayi",s.bayi);
     if(navigator.onLine===false) toast("İnternet yok: WhatsApp mesajı bağlantı gelince gider");
     if(navigator.share){
@@ -1371,6 +1437,9 @@ function parseRows(rows){
       .catch(function(){});
   }
   window.addEventListener("online",updOff); window.addEventListener("offline",updOff);
+  window.addEventListener("online",function(){ setTimeout(function(){ autoBackup(); drvAuto(true); },3000); });
+  document.addEventListener("visibilitychange",function(){ if(!document.hidden) setTimeout(function(){ autoBackup(); drvAuto(); },1500); });
+  setTimeout(function(){ autoBackup(); drvAuto(true); },3000);
 })();
 </script>
 </body>
