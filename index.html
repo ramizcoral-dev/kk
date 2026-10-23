@@ -330,7 +330,7 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
 </script>
 <script>
 (function(){
-  var APPV="23.10.2026-1";   // uygulama sürümü (her yayında güncellenir)
+  var APPV="23.10.2026-2";   // uygulama sürümü (her yayında güncellenir)
   var KEY="kk-okuyucu-v3", V2KEY="kk-okuyucu-v2", V1KEY="kk-okuyucu-liste";
   var KEEP_SENT_MS=7*24*3600*1000;      // gönderilen sevkler 1 hafta saklanır
   var D={sevkler:[], cur:null, names:{bayi:[],urun:[]}, unit:"çvl"};
@@ -392,8 +392,9 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
     var bg={}, bn={}, nm=[];
     (d.items||[]).forEach(function(it){ bg[it.g]=it; (it.m||[]).forEach(function(n){ bn[trUp(n)]=it.g; nm.push(n); }); if(it.b) bn[trUp(it.b)]=bn[trUp(it.b)]||it.g; });
     (d.names||[]).forEach(function(n){ nm.push(n); });
-    var ns={}; nm.forEach(function(n){ ns[nkey(n)]=1; });
-    G={loaded:true, v:d.v||"", src:d.at?(d.src||""):"", at:d.at||0, count:(d.items||[]).length, byGtin:bg, byName:bn, names:nm, nameSet:ns, raw:d};
+    var ns={}, bk={}, cn={}; nm.forEach(function(n){ var k=nkey(n); ns[k]=1; if(!cn[k]) cn[k]=n; if(bn[trUp(n)] && !bk[k]) bk[k]=bn[trUp(n)]; });
+    for(var t in bn){ var k2=nkey(t); if(!bk[k2]) bk[k2]=bn[t]; }
+    G={loaded:true, v:d.v||"", src:d.at?(d.src||""):"", at:d.at||0, count:(d.items||[]).length, byGtin:bg, byName:bn, byKey:bk, canon:cn, names:nm, nameSet:ns, raw:d};
   }
   function loadDict(){
     var local=null; try{ local=JSON.parse(localStorage.getItem(DICT_KEY)||"null"); }catch(e){}
@@ -404,7 +405,10 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
     }).catch(function(){ render(); });
   }
   function prodName(gt){ var it=G.byGtin[gt]; return it ? ((it.m&&it.m[0]) || it.b) : null; }
-  function gGtin(g){ return g.gtin || G.byName[trUp(g.name)] || null; }
+  // ad → GTIN: önce birebir, sonra harf/boşluk/noktalama farkı gözetmeden (örn. "hektas bordo 20wp 10kg")
+  function gtinOf(n){ if(!n) return null; return G.byName[trUp(n)] || (G.byKey && G.byKey[nkey(n)]) || null; }
+  function canonName(n){ var c=G.canon && G.canon[nkey(n)]; return c || n; }
+  function gGtin(g){ return g.gtin || gtinOf(g.name) || null; }
   // GS1 karekod alanları: 01 GTIN, 17 SKT, 10 lot, 21 seri no, 00 SSCC (koli/palet). Ayraç: GS (\x1d)
   function gs1(raw){
     var t=String(raw).replace(/^\][A-Za-z]\d/,""), o={}, i=0, guard=0;
@@ -465,6 +469,7 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
   function save(){ var s=cur(); if(s) s.updated=Date.now(); try{ localStorage.setItem(KEY, JSON.stringify(D)); }catch(e){ toast("Kaydedilemedi: telefon hafızası dolu olabilir"); } }
   function remember(kind,val){
     val=(val||"").trim(); if(!val) return;
+    if(kind==="urun" && G.canon) val=canonName(val);
     var a=D.names[kind].filter(function(x){return x.toLocaleUpperCase("tr")!==val.toLocaleUpperCase("tr")});
     a.unshift(val); D.names[kind]=a.slice(0,60);
   }
@@ -749,7 +754,7 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
       if(mine!==gt){
         var idx=-1; s.groups.forEach(function(gg,i){ if(idx<0 && gGtin(gg)===gt) idx=i; });
         if(idx>=0){ s.active=idx; g=s.groups[idx]; switched=true; }
-        else if(!mine && !G.byName[trUp(g.name)] && !g.codes.length){ g.gtin=gt; if(pn) notes.push("Tanındı: "+pn); }
+        else if(!mine && !gtinOf(g.name) && !g.codes.length){ g.gtin=gt; if(pn) notes.push("Tanındı: "+pn); }
         else{
           beep("dup"); flash("dup");
           setStatus("dup","YANLIŞ ÜRÜN! Bu kod "+(pn||"bilinmeyen ürün (GTIN "+gt+")")+" — bu sevkte yok. Eklenmedi.", code);
@@ -767,7 +772,7 @@ label.btn{font:600 14px var(--font);border-radius:12px;padding:8px 12px;border:1
         if(mineG!==ni2){
           var gix=-1; s.groups.forEach(function(gg,i){ if(gix<0 && gKeyGts(gg)===ni2) gix=i; });
           if(gix>=0){ s.active=gix; g=s.groups[gix]; switched=true; }
-          else if(mineG==null && !g.codes.length && !G.byName[trUp(g.name)]){ g.gtsKey=ni2; notes.push("Tanındı: "+gtsInfo.name); }
+          else if(mineG==null && !g.codes.length && !gtinOf(g.name)){ g.gtsKey=ni2; notes.push("Tanındı: "+gtsInfo.name); }
           else{
             beep("dup"); flash("dup");
             setStatus("dup","YANLIŞ ÜRÜN! Bu KK "+gtsInfo.name+" — bu sevkte yok. Eklenmedi.", code+(gtsInfo.lot?" · Lot "+gtsInfo.lot:""));
@@ -1335,10 +1340,11 @@ function parseRows(rows){
   function sugItems(kind,q){
     var toks=fold(q).split(/\s+/).map(function(t){ return t.replace(/[^0-9A-Z]/g,""); }).filter(Boolean);
     if(!toks.length) return [];
-    var known = kind==="urun" ? function(n){ return !!(G.byName[trUp(n)] || G.nameSet[nkey(n)]); } : function(n){ return !!B.set[nkey(n)]; };
+    var known = kind==="urun" ? function(n){ return !!(gtinOf(n) || G.nameSet[nkey(n)]); } : function(n){ return !!B.set[nkey(n)]; };
     var base = kind==="urun" ? G.names : B.names;
     var seen={}, out=[];
     D.names[kind].concat(base).forEach(function(n,i){
+      if(kind==="urun") n=canonName(n);
       var k=nkey(n); if(!k || seen[k]) return; seen[k]=1;
       if(!toks.every(function(t){ return k.indexOf(t)>=0; })) return;
       var recent=i<D.names[kind].length, manual=recent && !known(n);
@@ -1358,7 +1364,7 @@ function parseRows(rows){
         var b=document.createElement("button"); b.type="button";
         var t=document.createElement("b"); t.textContent=it.n; b.appendChild(t);
         if(it.manual){ var tg=document.createElement("span"); tg.className="tag"; tg.textContent="elle yazılmış"; b.appendChild(tg); }
-        if(kind==="urun"){ var gt=G.byName[trUp(it.n)]; if(gt){ var sm=document.createElement("small"); var bn=G.byGtin[gt]&&G.byGtin[gt].b; sm.textContent="GTIN "+gt.slice(-6)+(bn?" · "+bn:""); b.appendChild(sm); } }
+        if(kind==="urun"){ var gt=gtinOf(it.n); if(gt){ var sm=document.createElement("small"); var bn=G.byGtin[gt]&&G.byGtin[gt].b; sm.textContent="GTIN "+gt.slice(-6)+(bn?" · "+bn:""); b.appendChild(sm); } }
         else{ var bk=B.code[nkey(it.n)]; if(bk){ var sm2=document.createElement("small"); sm2.textContent=bk; b.appendChild(sm2); } }
         // seçim sadece kaydırmadan yapılan dokunuşta (click) olur; kaydırırken seçilmez
         b.onclick=function(){ pickIt(it.n); };
@@ -1384,7 +1390,7 @@ function parseRows(rows){
     return show;
   }
   function nameState(){
-    var v=$("nameIn").value.trim(), h=$("nameHint"), gt=G.byName[trUp(v)];
+    var v=$("nameIn").value.trim(), h=$("nameHint"), gt=gtinOf(v);
     if(!v){ h.textContent=""; h.className="note"; return; }
     if(gt){ h.textContent="✓ Mikro ürünü tanındı · GTIN "+gt.slice(-6)+" · okutmada ürün kontrolü yapılır"; h.className="note ok"; }
     else if(GT.alias[nkey(v)]!=null){ h.textContent="✓ GTS ürünü tanındı · okutmada KK kontrolü yapılır"; h.className="note ok"; }
